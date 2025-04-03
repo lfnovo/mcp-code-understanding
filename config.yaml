@@ -1,0 +1,24 @@
+server:
+  name: "Code Understanding Server"
+  log_level: "info"
+  host: "localhost"
+  port: 8080
+
+repositories:
+  cache_dir: "./repo_cache"
+  refresh_interval: 3600  # seconds
+  github:
+    api_token: "${GITHUB_TOKEN}"
+
+context:
+  summary_depth: "medium"  # basic, medium, detailed
+  include_dependencies: true
+  max_files_per_context: 100
+
+parsers:
+  enabled:
+    - python
+    - javascript
+    - typescript
+    - java
+    - go

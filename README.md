@@ -12,13 +12,19 @@ An MCP (Model Context Protocol) server designed to understand codebases and prov
 
 ## Installation
 
-1. Ensure you have Python 3.9+ installed
-2. Install Poetry (dependency management tool)
-3. Clone this repository
+1. Ensure you have Python 3.11+ installed
+2. Clone this repository
+3. Create and activate a virtual environment:
+
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+```
+
 4. Install dependencies:
 
 ```bash
-poetry install
+pip install -e .
 ```
 
 ## Configuration
@@ -63,7 +69,7 @@ export GITHUB_TOKEN="your-token-here"
 Start the server:
 
 ```bash
-poetry run python -m code_understanding.server
+python -m code_understanding.mcp.server.app
 ```
 
 ## MCP Tools
@@ -81,20 +87,20 @@ The server provides the following MCP tools:
 Run tests:
 
 ```bash
-poetry run pytest
+pytest
 ```
 
 Format code:
 
 ```bash
-poetry run black .
-poetry run isort .
+black .
+isort .
 ```
 
 Type checking:
 
 ```bash
-poetry run mypy .
+mypy .
 ```
 
 ## License

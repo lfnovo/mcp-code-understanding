@@ -5,7 +5,8 @@ Repository management and operations.
 import asyncio
 from pathlib import Path
 from typing import Dict, Optional, Any
-import uuid
+import time
+import shutil
 
 import git
 from git.repo import Repo
@@ -31,12 +32,14 @@ class Repository:
         self.url = url
         self.branch = branch
         self._git_repo: Optional[Repo] = None
+        self.last_accessed = time.time()
 
         if self.is_git and self.root_path.exists():
             self._git_repo = Repo(self.root_path)
 
     async def get_resource(self, resource_path: str) -> Dict[str, Any]:
         """Get contents of a file or directory listing."""
+        self.last_accessed = time.time()
         path = self.root_path / resource_path
 
         if not path.exists():
@@ -59,6 +62,7 @@ class Repository:
 
     async def refresh(self) -> Dict[str, Any]:
         """Update repository with latest changes."""
+        self.last_accessed = time.time()
         if not self.is_git or not self._git_repo:
             return {"status": "not_git_repo"}
 
@@ -75,6 +79,27 @@ class RepositoryManager:
         self.config = config
         self.cache_dir = Path(config.cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.repositories: Dict[str, Repository] = {}
+
+    def _cleanup_if_needed(self):
+        """Remove least recently accessed repositories if over limit."""
+        if len(self.repositories) <= self.config.max_cached_repos:
+            return
+
+        # Sort repositories by last access time
+        sorted_repos = sorted(
+            self.repositories.items(), key=lambda x: x[1].last_accessed
+        )
+
+        # Remove oldest repositories until under limit
+        while len(self.repositories) > self.config.max_cached_repos:
+            repo_id, repo = sorted_repos.pop(0)
+            try:
+                if repo.root_path.exists():
+                    shutil.rmtree(repo.root_path)
+                del self.repositories[repo_id]
+            except Exception as e:
+                print(f"Error removing repository {repo_id}: {e}")
 
     async def get_repository(self, path: str) -> Repository:
         """Get or create a Repository instance for the given path."""
@@ -112,13 +137,26 @@ class RepositoryManager:
         except (git.InvalidGitRepositoryError, git.NoSuchPathError):
             pass
 
-        return Repository(
-            repo_id=cache_path.name,
+        # Create or update repository instance
+        repo_id = str(cache_path)
+        if repo_id in self.repositories:
+            self.repositories[repo_id].last_accessed = time.time()
+            return self.repositories[repo_id]
+
+        # Create new repository instance
+        repository = Repository(
+            repo_id=repo_id,
             root_path=cache_path,
             repo_type="git" if is_git else "local",
             is_git=is_git_repo,
             url=path if is_git else url,
         )
+        self.repositories[repo_id] = repository
+
+        # Check if we need to clean up old repositories
+        self._cleanup_if_needed()
+
+        return repository
 
     async def clone_repository(
         self, url: str, branch: Optional[str] = None
@@ -129,6 +167,19 @@ class RepositoryManager:
 
         try:
             git_repo = Repo.clone_from(url, cache_path, branch=branch)
+            repo = Repository(
+                repo_id=str(cache_path),
+                root_path=cache_path,
+                repo_type="git",
+                is_git=True,
+                url=url,
+                branch=branch,
+            )
+            self.repositories[str(cache_path)] = repo
+
+            # Check if we need to clean up old repositories
+            self._cleanup_if_needed()
+
             return {
                 "status": "success",
                 "path": str(cache_path),
@@ -146,6 +197,11 @@ class RepositoryManager:
             return {"status": "error", "error": str(e)}
 
     async def cleanup(self):
-        """Cleanup temporary repositories."""
-        # TODO: Implement cleanup based on access time
-        pass
+        """Cleanup all repositories on server shutdown."""
+        for repo_id, repo in list(self.repositories.items()):
+            try:
+                if repo.root_path.exists():
+                    shutil.rmtree(repo.root_path)
+                del self.repositories[repo_id]
+            except Exception as e:
+                print(f"Error cleaning up repository {repo_id}: {e}")

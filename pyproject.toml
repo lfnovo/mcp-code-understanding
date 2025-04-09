@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.scripts]
-code-understanding-server = "code_understanding.mcp.server.app:main"
+mcp-code-understanding = "code_understanding.mcp.server.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

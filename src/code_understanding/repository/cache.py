@@ -51,17 +51,25 @@ class RepositoryCache:
     def _get_actual_repos(self) -> Set[str]:
         """Get set of actual repository paths on disk"""
         repos = set()
-        # Walk through the cache directory structure:
-        # repo_cache/github/org/repo-hash
+        # Walk through the cache directory structure
         for host_dir in self.cache_dir.iterdir():
             if not host_dir.is_dir() or host_dir.name in {".git", "__pycache__"}:
                 continue
-            for org_dir in host_dir.iterdir():
-                if not org_dir.is_dir():
-                    continue
-                for repo_dir in org_dir.iterdir():
+
+            if host_dir.name == "github":
+                # For GitHub repos, use org/repo structure
+                for org_dir in host_dir.iterdir():
+                    if not org_dir.is_dir():
+                        continue
+                    for repo_dir in org_dir.iterdir():
+                        if repo_dir.is_dir():
+                            repos.add(str(repo_dir.resolve()))
+            elif host_dir.name == "local":
+                # For local repos, only add the immediate subdirectories
+                for repo_dir in host_dir.iterdir():
                     if repo_dir.is_dir():
                         repos.add(str(repo_dir.resolve()))
+
         return repos
 
     def _read_metadata(self) -> Dict[str, RepositoryMetadata]:

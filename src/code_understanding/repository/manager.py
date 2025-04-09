@@ -13,6 +13,7 @@ from git.repo import Repo
 
 from ..config import RepositoryConfig
 from .path_utils import is_git_url, get_cache_path
+from .cache import RepositoryCache
 
 
 class Repository:
@@ -24,6 +25,7 @@ class Repository:
         is_git: bool,
         url: Optional[str] = None,
         branch: Optional[str] = None,
+        manager: Optional["RepositoryManager"] = None,
     ):
         self.id = repo_id
         self.root_path = Path(root_path)
@@ -32,14 +34,16 @@ class Repository:
         self.url = url
         self.branch = branch
         self._git_repo: Optional[Repo] = None
-        self.last_accessed = time.time()
+        self._manager = manager
 
         if self.is_git and self.root_path.exists():
             self._git_repo = Repo(self.root_path)
 
     async def get_resource(self, resource_path: str) -> Dict[str, Any]:
         """Get contents of a file or directory listing."""
-        self.last_accessed = time.time()
+        if self._manager:
+            await self._manager.cache.update_access(str(self.root_path))
+
         path = self.root_path / resource_path
 
         if not path.exists():
@@ -62,7 +66,9 @@ class Repository:
 
     async def refresh(self) -> Dict[str, Any]:
         """Update repository with latest changes."""
-        self.last_accessed = time.time()
+        if self._manager:
+            await self._manager.cache.update_access(str(self.root_path))
+
         if not self.is_git or not self._git_repo:
             return {"status": "not_git_repo"}
 
@@ -80,6 +86,7 @@ class RepositoryManager:
         self.cache_dir = Path(config.cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.repositories: Dict[str, Repository] = {}
+        self.cache = RepositoryCache(self.cache_dir, config.max_cached_repos)
 
     def _cleanup_if_needed(self):
         """Remove least recently accessed repositories if over limit."""
@@ -105,6 +112,7 @@ class RepositoryManager:
         """Get or create a Repository instance for the given path."""
         is_git = is_git_url(path)
         cache_path = get_cache_path(self.cache_dir, path)
+        str_path = str(cache_path.resolve())
 
         # If it's a Git URL and not cached, clone it
         if is_git and not cache_path.exists():
@@ -126,6 +134,9 @@ class RepositoryManager:
             # For now, just use the original path
             cache_path = original_path
 
+        # Update access time
+        await self.cache.update_access(str(cache_path.resolve()))
+
         # Check if it's a Git repository
         is_git_repo = False
         url = None
@@ -140,7 +151,6 @@ class RepositoryManager:
         # Create or update repository instance
         repo_id = str(cache_path)
         if repo_id in self.repositories:
-            self.repositories[repo_id].last_accessed = time.time()
             return self.repositories[repo_id]
 
         # Create new repository instance
@@ -150,11 +160,9 @@ class RepositoryManager:
             repo_type="git" if is_git else "local",
             is_git=is_git_repo,
             url=path if is_git else url,
+            manager=self,  # Pass manager reference
         )
         self.repositories[repo_id] = repository
-
-        # Check if we need to clean up old repositories
-        self._cleanup_if_needed()
 
         return repository
 
@@ -163,29 +171,31 @@ class RepositoryManager:
     ) -> Dict[str, Any]:
         """Clone a remote repository."""
         cache_path = get_cache_path(self.cache_dir, url)
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        str_path = str(cache_path.resolve())
+
+        # First, ensure we can add another repo
+        if not await self.cache.prepare_for_clone(str_path):
+            return {"status": "error", "error": "Failed to prepare cache for clone"}
 
         try:
-            git_repo = Repo.clone_from(url, cache_path, branch=branch)
-            repo = Repository(
-                repo_id=str(cache_path),
-                root_path=cache_path,
-                repo_type="git",
-                is_git=True,
-                url=url,
-                branch=branch,
-            )
-            self.repositories[str(cache_path)] = repo
+            # Create parent directories after prepare succeeds
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Check if we need to clean up old repositories
-            self._cleanup_if_needed()
+            # Perform the clone
+            git_repo = Repo.clone_from(url, cache_path, branch=branch)
+
+            # Register the new repo
+            await self.cache.add_repo(str_path, url)
 
             return {
                 "status": "success",
-                "path": str(cache_path),
+                "path": str_path,
                 "commit": str(git_repo.head.commit),
             }
         except Exception as e:
+            # Cleanup failed clone
+            if cache_path.exists():
+                shutil.rmtree(cache_path)
             return {"status": "error", "error": str(e)}
 
     async def refresh_repository(self, path: str) -> Dict[str, Any]:

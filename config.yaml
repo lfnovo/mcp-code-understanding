@@ -1,5 +1,5 @@
 name: "Code Understanding Server"
-log_level: "info"
+log_level: "debug"
 host: "localhost"
 port: 8080
 

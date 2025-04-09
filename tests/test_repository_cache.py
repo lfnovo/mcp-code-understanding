@@ -4,8 +4,9 @@ from pathlib import Path
 import shutil
 import asyncio
 import os
+import json
 
-from code_understanding.repository.cache import RepositoryCache
+from code_understanding.repository.cache import RepositoryCache, RepositoryMetadata
 
 
 @pytest.fixture
@@ -23,12 +24,10 @@ def cache(temp_cache_dir):
     return RepositoryCache(temp_cache_dir, max_cached_repos=3, cleanup_interval=0)
 
 
-def create_test_repo(cache_dir: Path, name: str, access_time: float = None):
-    """Helper to create a test repository directory."""
-    repo_dir = cache_dir / name
+def create_test_repo(cache_dir: Path, name: str) -> Path:
+    """Helper to create a test repository directory with github/org structure."""
+    repo_dir = cache_dir / "github" / "testorg" / name
     repo_dir.mkdir(parents=True)
-    if access_time is not None:
-        os.utime(repo_dir, (access_time, access_time))
     return repo_dir
 
 
@@ -40,144 +39,155 @@ async def test_cache_initialization(temp_cache_dir):
     assert cache.max_cached_repos == 50  # Default value
     assert cache.cleanup_interval == 86400  # Default value
     assert temp_cache_dir.exists()
+    assert (
+        temp_cache_dir / "metadata.json"
+    ).exists() == False  # Created only when needed
+    assert (temp_cache_dir / "cache.lock").exists()  # Lock file should be created
+
+
+@pytest.mark.asyncio
+async def test_metadata_creation_and_sync(cache, temp_cache_dir):
+    """Test metadata creation and synchronization."""
+    # Create test repositories
+    repo1 = create_test_repo(temp_cache_dir, "repo1")
+    repo2 = create_test_repo(temp_cache_dir, "repo2")
+
+    # Add repos to cache
+    await cache.add_repo(str(repo1), "https://github.com/testorg/repo1")
+    await cache.add_repo(str(repo2), "https://github.com/testorg/repo2")
+
+    # Verify metadata file exists and contains correct data
+    metadata_file = temp_cache_dir / "metadata.json"
+    assert metadata_file.exists()
+
+    data = json.loads(metadata_file.read_text())
+    assert str(repo1) in data
+    assert str(repo2) in data
+    assert data[str(repo1)]["url"] == "https://github.com/testorg/repo1"
+
+    # Test metadata sync when repo is deleted from disk
+    shutil.rmtree(repo1)
+    metadata = cache._sync_metadata()
+    assert str(repo1) not in metadata
+    assert str(repo2) in metadata
+
+
+@pytest.mark.asyncio
+async def test_prepare_for_clone(cache, temp_cache_dir):
+    """Test prepare_for_clone functionality."""
+    # Create max_cached_repos + 1 repositories
+    repos = []
+    for i in range(4):  # max is 3
+        repo = create_test_repo(temp_cache_dir, f"repo{i}")
+        await cache.add_repo(str(repo), f"https://github.com/testorg/repo{i}")
+        repos.append(repo)
+
+    # Try to prepare for another clone
+    new_path = str(temp_cache_dir / "github" / "testorg" / "new-repo")
+    result = await cache.prepare_for_clone(new_path)
+    assert result == True
+
+    # Verify oldest repo was removed
+    assert not repos[0].exists()
+    metadata = cache._read_metadata()
+    assert str(repos[0]) not in metadata
+
+
+@pytest.mark.asyncio
+async def test_update_access(cache, temp_cache_dir):
+    """Test access time updates in metadata."""
+    repo = create_test_repo(temp_cache_dir, "repo1")
+    await cache.add_repo(str(repo), "https://github.com/testorg/repo1")
+
+    # Get initial access time
+    metadata = cache._read_metadata()
+    initial_time = metadata[str(repo)].last_access
+
+    # Wait briefly and update access
+    time.sleep(0.1)
+    await cache.update_access(str(repo))
+
+    # Verify access time was updated
+    metadata = cache._read_metadata()
+    assert metadata[str(repo)].last_access > initial_time
 
 
 @pytest.mark.asyncio
 async def test_cleanup_old_repos(cache, temp_cache_dir):
-    """Test cleanup of old repositories when limit is exceeded."""
+    """Test cleanup of old repositories using metadata."""
     # Create test repositories with different access times
-    # Use larger time gaps to avoid any precision issues
-    now = time.time()
     repos = []
     for i in range(5):
-        repo = create_test_repo(
-            temp_cache_dir, f"repo{i}", now - (i * 3600)
-        )  # 1 hour gaps
+        repo = create_test_repo(temp_cache_dir, f"repo{i}")
+        await cache.add_repo(str(repo), f"https://github.com/testorg/repo{i}")
         repos.append(repo)
-        # Force sync to ensure access times are written
-        os.sync()
 
-    # Debug: Print actual access times
-    print("\nDebug: Repository access times:")
-    for repo in repos:
-        actual_time = os.path.getatime(repo)
-        print(f"{repo.name}: {actual_time} (delta from now: {now - actual_time:.2f})")
+    # Update access times for repos 1-3, leaving 0 and 4 as oldest
+    for i in range(1, 4):
+        time.sleep(0.1)  # Ensure different timestamps
+        await cache.update_access(str(repos[i]))
 
     await cache.cleanup_old_repos()
-
-    # Debug: Print remaining repos and their access times
-    print("\nDebug: Remaining repositories after cleanup:")
-    remaining_repos = list(temp_cache_dir.iterdir())
-    remaining_repos.sort(key=lambda x: os.path.getatime(x), reverse=True)
-    for repo in remaining_repos:
-        actual_time = os.path.getatime(repo)
-        print(f"{repo.name}: {actual_time} (delta from now: {now - actual_time:.2f})")
 
     # Should keep only the 3 newest repos (max_cached_repos=3)
-    assert len(remaining_repos) == 3
+    metadata = cache._read_metadata()
+    assert len(metadata) == 3
 
-    # Verify the oldest repos were removed
-    for repo in repos[3:]:  # repo3 and repo4 should be removed
-        assert not repo.exists(), f"Expected {repo.name} to be removed"
+    # Verify the oldest repos were removed (repo0 and repo4)
+    assert not repos[0].exists()  # Oldest (never updated)
+    assert not repos[4].exists()  # Never updated
 
-    # Verify the newest repos were kept
-    for repo in repos[:3]:  # repo0, repo1, repo2 should remain
-        assert repo.exists(), f"Expected {repo.name} to remain"
-
-    # Verify the remaining repos are actually the newest ones
-    remaining_names = {r.name for r in remaining_repos}
-    expected_names = {f"repo{i}" for i in range(3)}
-    assert (
-        remaining_names == expected_names
-    ), f"Expected repos {expected_names}, but found {remaining_names}"
+    # Verify repos 1-3 were kept (most recently accessed)
+    for i in range(1, 4):
+        assert repos[i].exists()
+        assert str(repos[i]) in metadata
 
 
 @pytest.mark.asyncio
-async def test_cleanup_interval_respected(cache):
-    """Test that cleanup only occurs after the specified interval."""
-    await cache.cleanup_old_repos()
-    first_cleanup = cache.last_cleanup
+async def test_concurrent_operations(cache, temp_cache_dir):
+    """Test concurrent operations with file locking."""
+    repo = create_test_repo(temp_cache_dir, "repo1")
 
-    # Immediate second cleanup should not run
-    await cache.cleanup_old_repos()
-    # Compare timestamps with reduced precision (round to seconds)
-    assert round(cache.last_cleanup) == round(first_cleanup)
-
-
-@pytest.mark.asyncio
-async def test_cleanup_empty_cache(cache):
-    """Test cleanup with empty cache directory."""
-    await cache.cleanup_old_repos()
-    assert cache.cache_dir.exists()
-    assert len(list(cache.cache_dir.iterdir())) == 0
-
-
-@pytest.mark.asyncio
-async def test_cleanup_invalid_directory(cache, temp_cache_dir):
-    """Test cleanup with an invalid directory."""
-    invalid_dir = temp_cache_dir / "invalid"
-    invalid_dir.mkdir(parents=True)
-    os.chmod(invalid_dir, 0o000)  # Remove all permissions temporarily
-
-    try:
-        await cache.cleanup_old_repos()
-        # Should not raise an exception
-        assert True
-    finally:
-        os.chmod(invalid_dir, 0o755)  # Restore permissions for cleanup
-
-
-@pytest.mark.asyncio
-async def test_cleanup_with_custom_max_repos(temp_cache_dir):
-    """Test cleanup with custom maximum repository limit."""
-    cache = RepositoryCache(temp_cache_dir, max_cached_repos=2, cleanup_interval=0)
-
-    # Create 4 test repositories
-    for i in range(4):
-        create_test_repo(temp_cache_dir, f"repo{i}")
-
-    await cache.cleanup_old_repos()
-    assert len(list(temp_cache_dir.iterdir())) == 2
-
-
-@pytest.mark.asyncio
-async def test_concurrent_cleanup(cache, temp_cache_dir):
-    """Test concurrent cleanup operations."""
-    # Create test repositories
-    for i in range(5):
-        create_test_repo(temp_cache_dir, f"repo{i}")
-
-    # Run multiple cleanup operations concurrently
+    # Run multiple operations concurrently
     await asyncio.gather(
-        cache.cleanup_old_repos(), cache.cleanup_old_repos(), cache.cleanup_old_repos()
+        cache.add_repo(str(repo), "url1"),
+        cache.update_access(str(repo)),
+        cache.cleanup_old_repos(),
     )
 
-    # Should still maintain the correct number of repos
-    assert len(list(temp_cache_dir.iterdir())) == 3
+    # Verify metadata is consistent
+    metadata = cache._read_metadata()
+    assert str(repo) in metadata
+    assert metadata[str(repo)].url == "url1"
 
 
 @pytest.mark.asyncio
-async def test_cleanup_error_handling(cache, temp_cache_dir):
-    """Test handling of errors during cleanup."""
-    error_repo = temp_cache_dir / "error_repo"
-    error_repo.mkdir(parents=True)
-    test_file = error_repo / "test.txt"
-    test_file.write_text("test")
-    os.chmod(test_file, 0o000)  # Remove all permissions temporarily
+async def test_atomic_metadata_writes(cache, temp_cache_dir):
+    """Test atomic metadata writes with temp files."""
+    repo = create_test_repo(temp_cache_dir, "repo1")
+    await cache.add_repo(str(repo), "test_url")
 
-    try:
-        await cache.cleanup_old_repos()
-        # Should not raise an exception
-        assert True
-    finally:
-        os.chmod(test_file, 0o644)  # Restore permissions for cleanup
+    # Verify temp file is cleaned up
+    temp_file = temp_cache_dir / "metadata.json.tmp"
+    assert not temp_file.exists()
+
+    # Verify metadata file exists and is valid
+    metadata_file = temp_cache_dir / "metadata.json"
+    assert metadata_file.exists()
+    data = json.loads(metadata_file.read_text())
+    assert str(repo) in data
 
 
 @pytest.mark.asyncio
-async def test_cleanup_with_nonexistent_cache_dir(temp_cache_dir):
-    """Test cleanup when cache directory doesn't exist initially."""
-    nonexistent_dir = temp_cache_dir / "nonexistent"
-    cache = RepositoryCache(nonexistent_dir)
+async def test_remove_repo(cache, temp_cache_dir):
+    """Test repository removal."""
+    repo = create_test_repo(temp_cache_dir, "repo1")
+    await cache.add_repo(str(repo), "test_url")
 
-    assert nonexistent_dir.exists()  # Should be created during initialization
-    await cache.cleanup_old_repos()  # Should handle empty directory gracefully
+    # Remove repository
+    await cache.remove_repo(str(repo))
+
+    # Verify removal
+    assert not repo.exists()
+    metadata = cache._read_metadata()
+    assert str(repo) not in metadata

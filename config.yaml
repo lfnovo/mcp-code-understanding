@@ -6,7 +6,7 @@ port: 8080
 repository:
   cache_dir: "./repo_cache"
   refresh_interval: 3600 # seconds
-  max_cached_repos: 10
+  max_cached_repos: 2
   github:
     api_token: null # Set via environment variable MCP_GITHUB_TOKEN
 

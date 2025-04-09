@@ -19,6 +19,13 @@ dependencies = [
     "typing-extensions>=4.5.0",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+]
+
 [project.scripts]
 code-understanding-server = "code_understanding.mcp.server.app:main"
 
@@ -26,3 +33,29 @@ code-understanding-server = "code_understanding.mcp.server.app:main"
 where = ["src"]
 include = ["code_understanding*"]
 namespaces = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=code_understanding --cov-report=term-missing --cov-report=html"
+
+[tool.coverage.run]
+branch = true
+source = ["code_understanding"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError",
+]
+ignore_errors = true
+omit = [
+    "tests/*",
+    "setup.py",
+]

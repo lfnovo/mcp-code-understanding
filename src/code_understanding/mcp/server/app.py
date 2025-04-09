@@ -12,7 +12,7 @@ from mcp.server.fastmcp import FastMCP
 from code_understanding.config import ServerConfig, load_config
 from code_understanding.repository import RepositoryManager
 from code_understanding.context import ContextGenerator
-from code_understanding.qa import QAEngine
+from code_understanding.search import SearchEngine
 
 # Configure logging
 logging.basicConfig(
@@ -33,10 +33,10 @@ def create_mcp_server(config: Optional[ServerConfig] = None) -> FastMCP:
     # Initialize core components
     repo_manager = RepositoryManager(config.repository)
     context_generator = ContextGenerator(config.context)
-    qa_engine = QAEngine()
+    search_engine = SearchEngine()
 
     # Register tools
-    register_tools(server, repo_manager, context_generator, qa_engine)
+    register_tools(server, repo_manager, context_generator, search_engine)
 
     return server
 
@@ -45,7 +45,7 @@ def register_tools(
     mcp_server: FastMCP,
     repo_manager: RepositoryManager,
     context_generator: ContextGenerator,
-    qa_engine: QAEngine,
+    search_engine: SearchEngine,
 ) -> None:
     """Register all MCP tools with the server."""
 
@@ -67,13 +67,17 @@ def register_tools(
         return await repo.get_resource(resource_path)
 
     @mcp_server.tool(
-        name="answer_question",
-        description="Answer natural language questions about code",
+        name="search_codebase",
+        description="Search the codebase for relevant code snippets (temporary implementation)",
     )
-    async def answer_question(repo_path: str, question: str) -> dict:
-        """Answer natural language questions about code."""
+    async def search_codebase(repo_path: str, query: str) -> dict:
+        """Search the codebase for relevant code snippets.
+
+        This is a temporary implementation using keyword-based search
+        until a proper vector store is set up.
+        """
         repo = await repo_manager.get_repository(repo_path)
-        return await qa_engine.answer_question(repo, question)
+        return await search_engine.search(repo, query)
 
     @mcp_server.tool(
         name="refresh_repo",

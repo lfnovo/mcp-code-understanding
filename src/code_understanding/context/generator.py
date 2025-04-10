@@ -44,14 +44,11 @@ class ContextGenerator:
             "summary": await self._generate_summary(repo),
         }
 
-        if self.config.include_dependencies:
-            context["dependencies"] = await self._analyze_dependencies(repo)
-
         return context
 
     async def _analyze_structure(self, repo: Repository) -> Dict[str, Any]:
         """Analyze the repository structure."""
-        structure = {"files": [], "directories": [], "entry_points": [], "packages": []}
+        structure = {"files": [], "directories": []}
 
         root = repo.root_path
         for path in root.rglob("*"):
@@ -63,45 +60,19 @@ class ContextGenerator:
 
             if path.is_file():
                 structure["files"].append(str(rel_path))
-
-                # Identify potential entry points
-                if path.name in ["main.py", "app.py", "server.py"]:
-                    structure["entry_points"].append(str(rel_path))
             else:
-                if path.is_dir() and (path / "__init__.py").exists():
-                    structure["packages"].append(str(rel_path))
-                else:
-                    structure["directories"].append(str(rel_path))
+                structure["directories"].append(str(rel_path))
 
         return structure
-
-    async def _analyze_dependencies(self, repo: Repository) -> Dict[str, Any]:
-        """Analyze project dependencies."""
-        deps = {"python": {"requirements": [], "poetry": None, "pipfile": None}}
-
-        # Check requirements.txt
-        req_file = repo.root_path / "requirements.txt"
-        if req_file.exists():
-            deps["python"]["requirements"] = req_file.read_text().splitlines()
-
-        # Check pyproject.toml
-        pyproject = repo.root_path / "pyproject.toml"
-        if pyproject.exists():
-            deps["python"]["poetry"] = pyproject.read_text()
-
-        # Check Pipfile
-        pipfile = repo.root_path / "Pipfile"
-        if pipfile.exists():
-            deps["python"]["pipfile"] = pipfile.read_text()
-
-        return deps
 
     async def _generate_summary(self, repo: Repository) -> Dict[str, Any]:
         """Generate a high-level summary of the repository."""
         summary = {
-            "file_count": 0,
-            "directory_count": 0,
-            "language_stats": {},
+            "file_stats": {
+                "total_files": 0,
+                "total_directories": 0,
+                "by_extension": {},
+            },
             "parsed_files": [],
         }
 
@@ -112,15 +83,15 @@ class ContextGenerator:
                 continue
 
             if path.is_file():
-                summary["file_count"] += 1
-                ext = path.suffix
-                summary["language_stats"][ext] = (
-                    summary["language_stats"].get(ext, 0) + 1
+                summary["file_stats"]["total_files"] += 1
+                ext = path.suffix.lower()
+                summary["file_stats"]["by_extension"][ext] = (
+                    summary["file_stats"]["by_extension"].get(ext, 0) + 1
                 )
             else:
-                summary["directory_count"] += 1
+                summary["file_stats"]["total_directories"] += 1
 
-        # Parse files up to the configured limit
+        # Parse files using Tree-sitter
         parsed_count = 0
         for path in repo.root_path.rglob("*"):
             if not path.is_file():
@@ -130,8 +101,7 @@ class ContextGenerator:
             if any(p.startswith(".") for p in path.parts) or repo.is_ignored(path):
                 continue
 
-            # Instead of using a dictionary lookup by extension,
-            # find the first parser that can handle this file
+            # Find parser that can handle this file
             parser = next(
                 (p for p in self.parsers_list if p.can_parse(str(path))), None
             )

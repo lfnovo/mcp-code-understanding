@@ -57,8 +57,8 @@ class ContextGenerator:
         for path in root.rglob("*"):
             rel_path = path.relative_to(root)
 
-            # Skip common directories to ignore
-            if any(p.startswith(".") for p in path.parts):
+            # Skip common directories to ignore and gitignored files
+            if any(p.startswith(".") for p in path.parts) or repo.is_ignored(rel_path):
                 continue
 
             if path.is_file():
@@ -107,6 +107,10 @@ class ContextGenerator:
 
         # Gather basic stats
         for path in repo.root_path.rglob("*"):
+            # Skip common directories to ignore and gitignored files
+            if any(p.startswith(".") for p in path.parts) or repo.is_ignored(path):
+                continue
+
             if path.is_file():
                 summary["file_count"] += 1
                 ext = path.suffix
@@ -122,8 +126,8 @@ class ContextGenerator:
             if not path.is_file():
                 continue
 
-            # Skip common directories to ignore
-            if any(p.startswith(".") for p in path.parts):
+            # Skip common directories to ignore and gitignored files
+            if any(p.startswith(".") for p in path.parts) or repo.is_ignored(path):
                 continue
 
             # Instead of using a dictionary lookup by extension,

@@ -4,12 +4,13 @@ Repository management and operations.
 
 import asyncio
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Union
 import time
 import shutil
 
 import git
 from git.repo import Repo
+import pathspec
 
 from ..config import RepositoryConfig
 from .path_utils import is_git_url, get_cache_path
@@ -38,6 +39,32 @@ class Repository:
 
         if self.is_git and self.root_path.exists():
             self._git_repo = Repo(self.root_path)
+
+    def is_ignored(self, path: Union[str, Path]) -> bool:
+        """Check if a path should be ignored based on .gitignore patterns.
+
+        Args:
+            path: Path to check, either as string or Path object
+
+        Returns:
+            True if path matches any gitignore pattern, False otherwise
+        """
+        gitignore_path = self.root_path / ".gitignore"
+        if not gitignore_path.exists():
+            return False
+
+        with open(gitignore_path, "r") as f:
+            patterns = f.read().splitlines()
+
+        spec = pathspec.PathSpec.from_lines(
+            pathspec.patterns.GitWildMatchPattern, patterns
+        )
+
+        if isinstance(path, str):
+            path = Path(path)
+
+        rel_path = str(path.relative_to(self.root_path) if path.is_absolute() else path)
+        return spec.match_file(rel_path)
 
     async def get_resource(self, resource_path: str) -> Dict[str, Any]:
         """Get contents of a file or directory listing."""

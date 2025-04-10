@@ -1,6 +1,6 @@
 """Tree-sitter based code parsing and symbol extraction."""
 
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Optional
 from pathlib import Path
 import logging
 
@@ -76,6 +76,21 @@ class CodeParser:
         end_byte = node.end_byte
         return content[start_byte:end_byte]
 
+    def _find_name_node(self, node: Node) -> Optional[Node]:
+        """Find the name identifier within a definition node.
+
+        Args:
+            node: Parent definition node
+
+        Returns:
+            Name node or None if not found
+        """
+        # Look for the identifier child node
+        for child in node.children:
+            if child.type == "identifier":
+                return child
+        return None
+
     async def extract_symbols(
         self, file_path: Path, content: str
     ) -> List[Dict[str, Any]]:
@@ -109,30 +124,93 @@ class CodeParser:
         try:
             # Parse code
             tree = parser.parse(bytes(content, "utf8"))
+            logger.debug(f"Successfully parsed file into Tree-sitter AST")
 
             # Load and execute query
+            logger.debug(f"Loading query file from {query_path}")
             with open(query_path, "r") as f:
                 query_string = f.read()
+            logger.debug(f"Loaded query ({len(query_string)} bytes)")
 
             query = language.query(query_string)
-            captures = query.captures(tree.root_node)
+            logger.debug("Successfully created Tree-sitter query")
 
             # Process captures into symbols
             symbols = []
-            for node, tag_name in captures:
-                symbol_type = tag_name.split(".")[-1]  # Extract type from tag
-                symbol_name = self._get_text(node, content)
+            try:
+                captures = query.captures(tree.root_node)
+                logger.debug(f"Query execution complete, processing captures")
 
-                symbol = {
-                    "type": symbol_type,
-                    "name": symbol_name,
-                    "line": node.start_point[0] + 1,  # Convert to 1-indexed
-                    "column": node.start_point[1],
-                    "end_line": node.end_point[0] + 1,
-                    "end_column": node.end_point[1],
-                }
-                symbols.append(symbol)
+                if isinstance(captures, dict):
+                    # Handle dictionary format with arrays of nodes
+                    for capture_type, nodes in captures.items():
+                        if isinstance(nodes, list):
+                            for node in nodes:
+                                try:
+                                    # Find the name node
+                                    name_node = self._find_name_node(node)
 
+                                    if not name_node:
+                                        logger.debug(
+                                            f"Couldn't find name for {capture_type} node"
+                                        )
+                                        continue
+
+                                    symbol_name = self._get_text(name_node, content)
+                                    logger.debug(
+                                        f"Found symbol: {symbol_name} ({capture_type})"
+                                    )
+
+                                    symbol = {
+                                        "type": capture_type,
+                                        "name": symbol_name,
+                                        "line": name_node.start_point[0]
+                                        + 1,  # Convert to 1-indexed
+                                        "column": name_node.start_point[1],
+                                        "end_line": name_node.end_point[0] + 1,
+                                        "end_column": name_node.end_point[1],
+                                    }
+                                    symbols.append(symbol)
+                                except Exception as e:
+                                    logger.error(f"Error processing node: {e}")
+                                    continue
+                        else:
+                            logger.warning(
+                                f"Expected list for capture type {capture_type}, got {type(nodes)}"
+                            )
+                else:
+                    # Handle standard tree-sitter format (list of tuples)
+                    for capture in captures:
+                        try:
+                            node, tag_name = capture
+
+                            # Find the name node
+                            name_node = self._find_name_node(node)
+
+                            if not name_node:
+                                logger.debug(f"Couldn't find name for {tag_name} node")
+                                continue
+
+                            symbol_name = self._get_text(name_node, content)
+                            logger.debug(f"Found symbol: {symbol_name} ({tag_name})")
+
+                            symbol = {
+                                "type": tag_name,
+                                "name": symbol_name,
+                                "line": name_node.start_point[0]
+                                + 1,  # Convert to 1-indexed
+                                "column": name_node.start_point[1],
+                                "end_line": name_node.end_point[0] + 1,
+                                "end_column": name_node.end_point[1],
+                            }
+                            symbols.append(symbol)
+                        except Exception as e:
+                            logger.error(f"Error processing capture: {e}")
+                            continue
+            except Exception as e:
+                logger.error(f"Error processing captures: {e}")
+
+            logger.debug(f"Extracted {len(symbols)} symbols total")
             return symbols
 
         except Exception as e:

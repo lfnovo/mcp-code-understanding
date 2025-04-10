@@ -1,17 +1,18 @@
-"""Parser factory."""
+"""Parser factory and utilities."""
 
-from typing import List, Dict
 from pathlib import Path
+from typing import Dict, List
 
+from ..config import ServerConfig
 from .base import BaseParser
 from .treesitter_adapter import TreeSitterParser
 
 
-def create_parsers(config: Dict) -> List[BaseParser]:
-    """Create parser instances based on configuration.
+def create_parsers(config: ServerConfig) -> List[BaseParser]:
+    """Create parser instances based on config.
 
     Args:
-        config: Application configuration
+        config: Server configuration
 
     Returns:
         List of parser instances
@@ -19,7 +20,7 @@ def create_parsers(config: Dict) -> List[BaseParser]:
     parsers = []
 
     # Add TreeSitter parser
-    queries_path = Path(config["treesitter"]["queries_path"])
+    queries_path = Path(config.treesitter.queries_path)
     treesitter_parser = TreeSitterParser(queries_path)
     parsers.append(treesitter_parser)
 

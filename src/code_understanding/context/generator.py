@@ -5,19 +5,30 @@ Context generation and code analysis.
 from pathlib import Path
 from typing import Dict, Any, List
 import asyncio
+import logging
 
-from tree_sitter import Language, Parser
-
-from ..config import ContextConfig
+from ..config import ContextConfig, load_config
 from ..repository import Repository
 from ..parsers.base import BaseParser
-from ..parsers.python import PythonParser
+from ..parsers import create_parsers  # Import the factory function
+
+logger = logging.getLogger(__name__)
 
 
 class ContextGenerator:
     def __init__(self, config: ContextConfig):
+        # Get complete config to pass to create_parsers
+        try:
+            full_config = load_config()
+
+            # Use the factory to create parsers
+            self.parsers_list = create_parsers(full_config)
+            logger.info(f"Initialized {len(self.parsers_list)} parsers")
+        except Exception as e:
+            logger.error(f"Error initializing parsers: {e}")
+            self.parsers_list = []
+
         self.config = config
-        self.parsers: Dict[str, BaseParser] = {".py": PythonParser()}
 
     async def generate_context(self, repo: Repository) -> Dict[str, Any]:
         """Generate structured context for a repository."""
@@ -111,14 +122,24 @@ class ContextGenerator:
             if not path.is_file():
                 continue
 
-            parser = self.parsers.get(path.suffix)
+            # Skip common directories to ignore
+            if any(p.startswith(".") for p in path.parts):
+                continue
+
+            # Instead of using a dictionary lookup by extension,
+            # find the first parser that can handle this file
+            parser = next(
+                (p for p in self.parsers_list if p.can_parse(str(path))), None
+            )
+
             if parser and parsed_count < self.config.max_files_per_context:
                 try:
-                    content = path.read_text()
+                    content = path.read_text(errors="replace")
                     parsed = await parser.parse_file(content, str(path))
                     summary["parsed_files"].append(parsed)
                     parsed_count += 1
+                    logger.debug(f"Successfully parsed {path}")
                 except Exception as e:
-                    print(f"Error parsing {path}: {e}")
+                    logger.error(f"Error parsing {path}: {e}")
 
         return summary

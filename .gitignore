@@ -57,3 +57,4 @@ dmypy.json
 
 # Jupyter Notebook
 .ipynb_checkpoints
+.aider*

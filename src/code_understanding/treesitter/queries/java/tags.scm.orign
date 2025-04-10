@@ -1,0 +1,29 @@
+; Class definitions
+((class_declaration
+  name: (identifier) @name
+  body: (class_body) @scope)
+  @definition.class)
+
+; Interface definitions
+((interface_declaration
+  name: (identifier) @name
+  body: (interface_body) @scope)
+  @definition.interface)
+
+; Enum definitions
+((enum_declaration
+  name: (identifier) @name
+  body: (enum_body) @scope)
+  @definition.enum)
+
+; Method definitions
+((method_declaration
+  name: (identifier) @name
+  body: (block) @scope)
+  @definition.method)
+
+; Field definitions
+((field_declaration
+  declarator: (variable_declarator
+    name: (identifier) @name))
+  @definition.field)

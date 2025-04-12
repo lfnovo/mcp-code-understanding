@@ -1,7 +1,5 @@
-"""
-Context generation functionality.
-"""
+"""Context package for RepoMap integration."""
 
-from .generator import ContextGenerator
+from .file_filter import FileFilter
 
-__all__ = ["ContextGenerator"]
+__all__ = ["FileFilter"]

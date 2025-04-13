@@ -6,11 +6,12 @@ import logging
 import sys
 import asyncio
 import click
-from typing import Optional
+from typing import List
 
 from mcp.server.fastmcp import FastMCP
 from code_understanding.config import ServerConfig, load_config
 from code_understanding.repository import RepositoryManager
+from code_understanding.context.builder import RepoMapBuilder
 
 # Configure logging
 logging.basicConfig(
@@ -21,7 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger("code_understanding.mcp")
 
 
-def create_mcp_server(config: Optional[ServerConfig] = None) -> FastMCP:
+def create_mcp_server(config: ServerConfig = None) -> FastMCP:
     """Create and configure the MCP server instance"""
     if config is None:
         config = load_config()
@@ -30,9 +31,10 @@ def create_mcp_server(config: Optional[ServerConfig] = None) -> FastMCP:
 
     # Initialize core components
     repo_manager = RepositoryManager(config.repository)
+    repo_map_builder = RepoMapBuilder(cache=repo_manager.cache)
 
     # Register tools
-    register_tools(server, repo_manager)
+    register_tools(server, repo_manager, repo_map_builder)
 
     return server
 
@@ -40,6 +42,7 @@ def create_mcp_server(config: Optional[ServerConfig] = None) -> FastMCP:
 def register_tools(
     mcp_server: FastMCP,
     repo_manager: RepositoryManager,
+    repo_map_builder: RepoMapBuilder,
 ) -> None:
     """Register all MCP tools with the server."""
 
@@ -68,15 +71,37 @@ def register_tools(
             return {"status": "error", "error": str(e)}
 
     @mcp_server.tool(name="clone_repo", description="Clone a new remote repository")
-    async def clone_repo(url: str, branch: Optional[str] = None) -> dict:
-        """Clone a new remote repository."""
+    async def clone_repo(url: str, branch: str = None) -> dict:
+        """
+        Clone a new remote repository and initialize RepoMap.
+
+        Args:
+            url: Repository URL to clone
+            branch: Branch to checkout (defaults to None)
+
+        Returns:
+            Dictionary containing status and repository information
+        """
         try:
-            # This will handle cloning if needed
+            # Clone/get repository
             repo = await repo_manager.get_repository(url)
-            logger.info(f"Successfully cloned repository {url}")
-            return {"status": "success", "path": str(repo.root_path)}
+            repo_path = str(repo.root_path.resolve())  # Ensure absolute path
+
+            # Start RepoMap build
+            await repo_map_builder.start_build(repo_path)
+
+            # Get initial build status
+            build_status = await repo_map_builder.get_build_status(repo_path)
+
+            logger.info(
+                f"Successfully cloned repository {url} and started RepoMap build"
+            )
+            return {
+                "status": "success",
+                "path": repo_path,
+                "repo_map_status": build_status,
+            }
         except Exception as e:
-            # Log the error with traceback for debugging
             logger.error(f"Error cloning repository: {e}", exc_info=True)
             return {"status": "error", "error": str(e)}
 

@@ -21,6 +21,7 @@ class RepositoryMetadata:
     path: str
     url: Optional[str]
     last_access: float
+    repo_map_status: Optional[str] = None
 
 
 class RepositoryCache:
@@ -83,6 +84,7 @@ class RepositoryCache:
                         path=path,
                         url=info.get("url"),
                         last_access=info.get("last_access", 0),
+                        repo_map_status=info.get("repo_map_status"),
                     )
             except Exception as e:
                 logger.error(f"Error reading metadata, starting fresh: {e}")
@@ -93,7 +95,11 @@ class RepositoryCache:
         temp_file = self.metadata_file.with_suffix(".tmp")
         try:
             data = {
-                path: {"url": meta.url, "last_access": meta.last_access}
+                path: {
+                    "url": meta.url,
+                    "last_access": meta.last_access,
+                    "repo_map_status": meta.repo_map_status,
+                }
                 for path, meta in metadata.items()
             }
             temp_file.write_text(json.dumps(data, indent=2))
@@ -159,7 +165,7 @@ class RepositoryCache:
         with self._file_lock():
             metadata = self._sync_metadata()
             metadata[path] = RepositoryMetadata(
-                path=path, url=url, last_access=time.time()
+                path=path, url=url, last_access=time.time(), repo_map_status=None
             )
             self._write_metadata(metadata)
 

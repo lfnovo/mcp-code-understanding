@@ -142,7 +142,7 @@ class RepositoryManager:
         """Get or create a Repository instance for the given path."""
         is_git = is_git_url(path)
         cache_path = get_cache_path(self.cache_dir, path)
-        str_path = str(cache_path.resolve())
+        str_path = str(cache_path.resolve())  # Ensure absolute path
 
         # If it's a Git URL and not cached, clone it
         if is_git and not cache_path.exists():
@@ -179,14 +179,14 @@ class RepositoryManager:
             pass
 
         # Create or update repository instance
-        repo_id = str(cache_path)
+        repo_id = str(cache_path.resolve())  # Use absolute path as ID
         if repo_id in self.repositories:
             return self.repositories[repo_id]
 
         # Create new repository instance
         repository = Repository(
             repo_id=repo_id,
-            root_path=cache_path,
+            root_path=cache_path.resolve(),  # Ensure absolute path
             repo_type="git" if is_git else "local",
             is_git=is_git_repo,
             url=path if is_git else url,
@@ -202,7 +202,7 @@ class RepositoryManager:
         """Clone a remote repository."""
         logger.info(f"Starting clone of repository: {url}")
         cache_path = get_cache_path(self.cache_dir, url)
-        str_path = str(cache_path.resolve())
+        str_path = str(cache_path.resolve())  # Ensure absolute path
         logger.debug(f"Cache path for repository: {str_path}")
 
         # First, ensure we can add another repo

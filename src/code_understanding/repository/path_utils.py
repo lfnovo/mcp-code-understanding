@@ -62,19 +62,22 @@ def parse_github_url(url: str) -> Tuple[str, str, Optional[str]]:
 
 def get_cache_path(cache_dir: Path, repo_path: str) -> Path:
     """Get deterministic cache path for a repository."""
+    # Ensure cache_dir is absolute
+    cache_dir = Path(cache_dir).resolve()
+
     if is_git_url(repo_path):
         # For GitHub URLs
         try:
             org, repo, ref = parse_github_url(repo_path)
             # Include ref in hash if present
             url_hash = hashlib.sha256(repo_path.encode()).hexdigest()[:8]
-            return cache_dir / "github" / org / f"{repo}-{url_hash}"
+            return (cache_dir / "github" / org / f"{repo}-{url_hash}").resolve()
         except ValueError:
             # Fall back to generic git handling
             url_hash = hashlib.sha256(repo_path.encode()).hexdigest()[:8]
-            return cache_dir / "git" / url_hash
+            return (cache_dir / "git" / url_hash).resolve()
     else:
         # For local paths
         abs_path = str(Path(repo_path).resolve())
         path_hash = hashlib.sha256(abs_path.encode()).hexdigest()[:8]
-        return cache_dir / "local" / path_hash
+        return (cache_dir / "local" / path_hash).resolve()

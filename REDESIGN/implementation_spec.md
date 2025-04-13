@@ -3,23 +3,24 @@
 ## Module Structure
 
 ```
-code_understanding/
-├── repository/                 # Existing repo management (keep)
-│   ├── __init__.py
-│   ├── manager.py             # Core repo operations
-│   ├── path_utils.py          # Cross-platform path handling
-│   └── git_ops.py             # Git operations wrapper
-├── context/                    # New RepoMap integration
-│   ├── __init__.py
-│   ├── builder.py             # RepoMap build management
-│   ├── file_filter.py         # PathSpec-based filtering
-│   └── extractor.py           # RepoMap output processing
-├── pattern_search/            # New search implementation
-│   ├── __init__.py
-│   └── searcher.py            # Pattern search using PathSpec
-└── mcp/
-    └── server/
-        └── app.py             # Thin API layer
+src/
+└── code_understanding/          # Root module directory
+    ├── repository/             # Repository management
+    │   ├── __init__.py
+    │   ├── manager.py         # Core repo and git operations
+    │   ├── path_utils.py      # Cross-platform path handling
+    │   └── cache.py          # Repository caching implementation
+    ├── context/               # RepoMap integration
+    │   ├── __init__.py
+    │   ├── builder.py        # RepoMap build management
+    │   ├── file_filter.py    # PathSpec-based filtering
+    │   └── extractor.py      # RepoMap output processing
+    ├── pattern_search/        # Pattern search implementation
+    │   ├── __init__.py
+    │   └── searcher.py       # Pattern search using PathSpec
+    └── mcp/
+        └── server/
+            └── app.py         # Thin API layer
 ```
 
 ## Detailed Component Specifications
@@ -29,7 +30,7 @@ code_understanding/
 ```python
 # manager.py
 class RepositoryManager:
-    """Handles repository operations and RepoMap initialization."""
+    """Handles repository operations including git operations and RepoMap initialization."""
 
     async def clone_repository(self, url: str, branch: str = None) -> dict:
         """
@@ -50,6 +51,36 @@ class RepositoryManager:
         """
         Cross-platform git command execution
         Uses subprocess with proper encoding and error handling
+        """
+
+# cache.py
+class RepositoryCache:
+    """Manages repository caching and metadata."""
+
+    async def get_cached_repo(self, url: str) -> Optional[str]:
+        """
+        Retrieve cached repository path if exists
+        """
+
+    async def cache_repo(self, url: str, path: str) -> None:
+        """
+        Cache repository metadata and path
+        """
+
+# path_utils.py
+class PathUtils:
+    """Cross-platform path handling utilities."""
+
+    @staticmethod
+    def normalize_path(path: str) -> str:
+        """
+        Normalize path for current platform
+        """
+
+    @staticmethod
+    def is_subpath(parent: str, child: str) -> bool:
+        """
+        Check if child path is subpath of parent
         """
 ```
 

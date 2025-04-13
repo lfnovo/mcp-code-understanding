@@ -5,12 +5,17 @@ Following test_repo_map_simple.py's core RepoMap interaction patterns.
 
 import asyncio
 import os
+import time
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 from aider.io import InputOutput
 from aider.repomap import RepoMap
 
+from ..repository.cache import RepositoryCache, RepositoryMetadata
 from .file_filter import FileFilter
+
+logger = logging.getLogger(__name__)
 
 
 class MinimalModel:
@@ -73,12 +78,10 @@ class SubprocessManager:
 class RepoMapBuilder:
     """Manages RepoMap building process."""
 
-    def __init__(self):
-        # Track both the build task and its result
-        self._building_repos: Dict[str, Tuple[asyncio.Task, Optional[str]]] = {}
-        self._subprocess_manager = SubprocessManager()
+    def __init__(self, cache: RepositoryCache):
         self.io = MinimalIO()
         self.model = MinimalModel()
+        self.cache = cache
 
     async def initialize_repo_map(
         self, root_dir: str, language: str = "python"
@@ -93,6 +96,7 @@ class RepoMapBuilder:
         Returns:
             Initialized RepoMap instance
         """
+        logger.debug(f"Initializing RepoMap for {root_dir} with language {language}")
         rm = RepoMap(
             root=root_dir,
             io=self.io,
@@ -113,94 +117,122 @@ class RepoMapBuilder:
         Returns:
             List of files to include in RepoMap
         """
+        logger.debug(f"Gathering files for {root_dir}")
         file_filter = FileFilter.for_language(language)
-        return file_filter.find_source_files(root_dir)
+        files = file_filter.find_source_files(root_dir)
+        logger.debug(f"Found {len(files)} files to process")
+        return files
 
-    async def start_build(self, repo_path: str, language: str = "python"):
+    async def _do_build(self, repo_path: str, language: str = "python"):
         """
-        Start RepoMap build process in the background.
-
-        Args:
-            repo_path: Path to repository
-            language: Programming language for filtering
+        Internal method to perform the actual build.
         """
-        if repo_path in self._building_repos:
-            # Build already in progress
-            return
+        try:
+            # Initialize RepoMap
+            logger.debug("Initializing RepoMap...")
+            repo_map = await self.initialize_repo_map(repo_path, language)
 
-        async def _build():
-            try:
-                # Initialize RepoMap
-                repo_map = await self.initialize_repo_map(repo_path, language)
+            # Gather files
+            logger.debug("Gathering files...")
+            files = await self.gather_files(repo_path, language)
 
-                # Gather files
-                files = await self.gather_files(repo_path, language)
+            # Generate the map
+            logger.debug("Generating RepoMap...")
+            output = repo_map.get_ranked_tags_map([], files)
 
-                # Generate the map and store the output
-                output = repo_map.get_ranked_tags_map([], files)
+            # Log preview of the output
+            logger.debug("RepoMap generation complete. First 20 lines preview:")
+            output_lines = output.split("\n")
+            for i, line in enumerate(output_lines[:20]):
+                logger.debug(f"Line {i+1}: {line}")
+            if len(output_lines) > 20:
+                logger.debug(f"... and {len(output_lines) - 20} more lines")
 
-                # Store the result in our tracking dict
-                self._building_repos[repo_path] = (
-                    self._building_repos[repo_path][0],  # Keep the task
-                    output,  # Store the result
-                )
+            # Update metadata with success status
+            with self.cache._file_lock():
+                metadata_dict = self.cache._read_metadata()
+                if repo_path not in metadata_dict:
+                    raise ValueError(f"Repository {repo_path} not found in cache")
 
-            except Exception as e:
-                print(f"Error building RepoMap for {repo_path}: {e}")
-                # Store None as the result to indicate failure
-                self._building_repos[repo_path] = (
-                    self._building_repos[repo_path][0],
-                    None,
-                )
+                metadata = metadata_dict[repo_path]
+                status = {
+                    "status": "complete",
+                    "completed_at": time.time(),
+                    "output": output,  # Store the RepoMap output
+                }
+                metadata.repo_map_status = status
 
-        # Start build process and track it with no result yet
-        task = asyncio.create_task(_build())
-        self._building_repos[repo_path] = (task, None)
+                # Write back the updated metadata
+                self.cache._write_metadata(metadata_dict)
 
-    async def is_building(self, repo_path: str) -> bool:
-        """
-        Check if RepoMap build is in progress.
+            logger.debug("Build completed successfully")
 
-        Args:
-            repo_path: Repository path to check
+        except Exception as e:
+            logger.error(f"Build failed: {str(e)}")
+            # Update metadata with failure status
+            with self.cache._file_lock():
+                metadata_dict = self.cache._read_metadata()
+                if repo_path not in metadata_dict:
+                    raise ValueError(f"Repository {repo_path} not found in cache")
 
-        Returns:
-            True if build is in progress, False otherwise
-        """
-        if repo_path not in self._building_repos:
-            return False
+                metadata = metadata_dict[repo_path]
+                status = {
+                    "status": "failed",
+                    "completed_at": time.time(),
+                    "error": str(e),
+                }
+                metadata.repo_map_status = status
 
-        task, _ = self._building_repos[repo_path]
-        return not task.done()
+                # Write back the updated metadata
+                self.cache._write_metadata(metadata_dict)
+            raise
 
-    async def get_build_result(self, repo_path: str) -> Optional[str]:
-        """
-        Get the RepoMap build result if available.
+    async def start_build(self, repo_path: str) -> None:
+        """Start building RepoMap for a repository."""
+        logger.debug(f"Starting RepoMap build for {repo_path}")
 
-        Args:
-            repo_path: Repository path to check
+        # Get repository metadata
+        with self.cache._file_lock():
+            metadata_dict = self.cache._read_metadata()
+            if repo_path not in metadata_dict:
+                raise ValueError(f"Repository {repo_path} not found in cache")
 
-        Returns:
-            The RepoMap output if build is complete, None if building or failed
-        """
-        if repo_path not in self._building_repos:
-            return None
+            metadata = metadata_dict[repo_path]
 
-        task, result = self._building_repos[repo_path]
-        if not task.done():
-            return None
+            # Calculate rough estimate of completion time
+            # TODO: Implement more sophisticated estimation based on codebase size/complexity
+            total_size = 0
+            for root, _, files in os.walk(repo_path):
+                for file in files:
+                    try:
+                        total_size += os.path.getsize(os.path.join(root, file))
+                    except (OSError, IOError):
+                        continue
 
-        return result
+            # Very rough estimate: 1 second per 100KB of code
+            estimated_seconds = max(1, total_size / (100 * 1024))
+            estimated_completion = time.time() + estimated_seconds
 
-    def cleanup_build(self, repo_path: str):
-        """
-        Clean up build tracking for a repository.
+            # Update build status
+            metadata.repo_map_status = {
+                "status": "building",
+                "estimated_completion_at": estimated_completion,
+                "message": "Building repository map for AI analysis",
+            }
+            self.cache._write_metadata(metadata_dict)
 
-        Args:
-            repo_path: Repository path to clean up
-        """
-        if repo_path in self._building_repos:
-            task, _ = self._building_repos[repo_path]
-            if not task.done():
-                task.cancel()
-            del self._building_repos[repo_path]
+        # Start build process in background
+        asyncio.create_task(self._do_build(repo_path))
+
+    async def get_build_status(self, repo_path: str) -> dict:
+        """Get current build status for a repository."""
+        with self.cache._file_lock():
+            metadata_dict = self.cache._read_metadata()
+            if repo_path not in metadata_dict:
+                raise ValueError(f"Repository {repo_path} not found in cache")
+
+            metadata = metadata_dict[repo_path]
+            if not metadata.repo_map_status:
+                return {"status": "not_started"}
+
+            return metadata.repo_map_status

@@ -48,8 +48,12 @@ def register_tools(
     )
     async def get_resource(repo_path: str, resource_path: str) -> dict:
         """Retrieve specific files or directory listings."""
-        repo = await repo_manager.get_repository(repo_path)
-        return await repo.get_resource(resource_path)
+        try:
+            repo = await repo_manager.get_repository(repo_path)
+            return await repo.get_resource(resource_path)
+        except Exception as e:
+            logger.error(f"Error getting resource: {e}", exc_info=True)
+            return {"status": "error", "error": str(e)}
 
     @mcp_server.tool(
         name="refresh_repo",
@@ -57,12 +61,24 @@ def register_tools(
     )
     async def refresh_repo(repo_path: str) -> dict:
         """Update a remote repository with latest changes."""
-        return await repo_manager.refresh_repository(repo_path)
+        try:
+            return await repo_manager.refresh_repository(repo_path)
+        except Exception as e:
+            logger.error(f"Error refreshing repository: {e}", exc_info=True)
+            return {"status": "error", "error": str(e)}
 
     @mcp_server.tool(name="clone_repo", description="Clone a new remote repository")
     async def clone_repo(url: str, branch: Optional[str] = None) -> dict:
         """Clone a new remote repository."""
-        return await repo_manager.clone_repository(url, branch)
+        try:
+            # This will handle cloning if needed
+            repo = await repo_manager.get_repository(url)
+            logger.info(f"Successfully cloned repository {url}")
+            return {"status": "success", "path": str(repo.root_path)}
+        except Exception as e:
+            # Log the error with traceback for debugging
+            logger.error(f"Error cloning repository: {e}", exc_info=True)
+            return {"status": "error", "error": str(e)}
 
 
 # Create server instance that can be imported by MCP CLI

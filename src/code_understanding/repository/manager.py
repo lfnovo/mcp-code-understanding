@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, Optional, Any, Union
 import time
 import shutil
+import logging
 
 import git
 from git.repo import Repo
@@ -15,6 +16,8 @@ import pathspec
 from ..config import RepositoryConfig
 from .path_utils import is_git_url, get_cache_path
 from .cache import RepositoryCache
+
+logger = logging.getLogger(__name__)
 
 
 class Repository:
@@ -197,21 +200,29 @@ class RepositoryManager:
         self, url: str, branch: Optional[str] = None
     ) -> Dict[str, Any]:
         """Clone a remote repository."""
+        logger.info(f"Starting clone of repository: {url}")
         cache_path = get_cache_path(self.cache_dir, url)
         str_path = str(cache_path.resolve())
+        logger.debug(f"Cache path for repository: {str_path}")
 
         # First, ensure we can add another repo
+        logger.debug("Preparing cache for clone...")
         if not await self.cache.prepare_for_clone(str_path):
+            logger.error("Failed to prepare cache for clone")
             return {"status": "error", "error": "Failed to prepare cache for clone"}
 
         try:
             # Create parent directories after prepare succeeds
+            logger.debug(f"Creating parent directories: {cache_path.parent}")
             cache_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Perform the clone
+            logger.info(f"Cloning repository from {url} to {cache_path}")
             git_repo = Repo.clone_from(url, cache_path, branch=branch)
+            logger.info("Clone successful")
 
             # Register the new repo
+            logger.debug("Registering repository in cache")
             await self.cache.add_repo(str_path, url)
 
             return {
@@ -220,8 +231,10 @@ class RepositoryManager:
                 "commit": str(git_repo.head.commit),
             }
         except Exception as e:
+            logger.error(f"Error during clone: {str(e)}", exc_info=True)
             # Cleanup failed clone
             if cache_path.exists():
+                logger.debug(f"Cleaning up failed clone at {cache_path}")
                 shutil.rmtree(cache_path)
             return {"status": "error", "error": str(e)}
 

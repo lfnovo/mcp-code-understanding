@@ -103,55 +103,64 @@ LANGUAGE_EXTENSIONS: Dict[str, List[str]] = {
 class FileFilter:
     """PathSpec-based file filtering."""
 
-    def __init__(self, languages: Optional[Union[str, List[str]]] = None):
-        """Initialize with optional language-specific patterns."""
+    def __init__(
+        self,
+        languages: Optional[Union[str, List[str]]] = None,
+        use_common_patterns: bool = True,
+        use_language_patterns: bool = True,
+    ):
+        """Initialize with optional language-specific patterns and filtering options.
+
+        Args:
+            languages: Optional language(s) to use for language-specific patterns
+            use_common_patterns: Whether to use common ignore patterns
+            use_language_patterns: Whether to use language-specific patterns
+        """
         # Store languages for reference
         if isinstance(languages, str):
             self.languages = [languages]
         else:
             self.languages = languages or []
 
-        # Set up ignore patterns - ONLY use language-specific patterns for the specified languages
-        ignore_patterns = list(COMMON_IGNORE_PATTERNS)  # Always include common patterns
-        if self.languages:
-            for lang in self.languages:
-                if lang in LANGUAGE_IGNORE_PATTERNS:
-                    ignore_patterns.extend(LANGUAGE_IGNORE_PATTERNS[lang])
+        self.use_common_patterns = use_common_patterns
+        self.use_language_patterns = use_language_patterns
 
-        # Set up include patterns - ONLY include extensions for specified languages
-        include_patterns = []
-        if self.languages:
-            for lang in self.languages:
-                if lang in LANGUAGE_EXTENSIONS:
-                    include_patterns.extend(LANGUAGE_EXTENSIONS[lang])
+        # Set up ignore patterns based on configuration
+        ignore_patterns = []
+        if use_common_patterns:
+            ignore_patterns.extend(COMMON_IGNORE_PATTERNS)
+
+        # Always include ALL language patterns when use_language_patterns is True
+        if use_language_patterns:
+            for lang_patterns in LANGUAGE_IGNORE_PATTERNS.values():
+                ignore_patterns.extend(lang_patterns)
 
         # Create PathSpec objects
         self.ignore_spec = PathSpec.from_lines(GitWildMatchPattern, ignore_patterns)
-        self.include_spec = (
-            PathSpec.from_lines(GitWildMatchPattern, include_patterns)
-            if include_patterns
-            else None
-        )
 
-    @classmethod
-    def for_language(cls, language: str) -> "FileFilter":
-        """Factory method to create a language-specific filter."""
-        return cls(language)
+        # Load .gitignore if it exists
+        self.gitignore_spec = None
 
-    @staticmethod
-    def check_common_patterns(path: Union[str, Path]) -> bool:
-        """
-        Check if a path matches any common ignore patterns.
-        These patterns apply regardless of language or project type.
+    def _load_gitignore(self, root_dir: Union[str, Path]) -> Optional[PathSpec]:
+        """Load .gitignore patterns if the file exists.
 
         Args:
-            path: Path to check (can be string or Path object)
+            root_dir: Repository root directory
 
         Returns:
-            True if path should be ignored, False otherwise
+            PathSpec object with .gitignore patterns, or None if file doesn't exist
         """
-        spec = PathSpec.from_lines(GitWildMatchPattern, COMMON_IGNORE_PATTERNS)
-        return spec.match_file(str(path))
+        gitignore_path = Path(root_dir) / ".gitignore"
+        if not gitignore_path.exists():
+            return None
+
+        try:
+            with open(gitignore_path, "r") as f:
+                patterns = f.readlines()
+            return PathSpec.from_lines(GitWildMatchPattern, patterns)
+        except Exception as e:
+            logger.warning(f"Failed to load .gitignore: {e}")
+            return None
 
     def should_ignore(self, path: Union[str, Path], is_dir: bool = None) -> bool:
         """
@@ -175,22 +184,20 @@ class FileFilter:
             p = Path(path)
             is_dir = p.is_dir() if p.exists() else path_str.endswith("/")
 
-        # For directories: only use ignore patterns
-        if is_dir:
-            return self.ignore_spec.match_file(path_str)
+        # Check .gitignore patterns first if they exist
+        if self.gitignore_spec and self.gitignore_spec.match_file(path_str):
+            return True
 
-        # For files:
-        # - If it matches an include pattern, KEEP IT regardless of ignore patterns
-        # - Otherwise, check against ignore patterns
-        if self.include_spec and self.include_spec.match_file(path_str):
-            return False  # KEEP files that match include patterns
-
-        # If no include patterns OR file doesn't match include patterns, check ignore patterns
+        # Then check our ignore patterns
         return self.ignore_spec.match_file(path_str)
 
     def find_source_files(self, root_dir: Union[str, Path]) -> List[str]:
         """Find all non-ignored source files in the directory."""
         root_path = Path(root_dir)
+
+        # Load .gitignore patterns if they exist
+        self.gitignore_spec = self._load_gitignore(root_path)
+
         source_files = []
 
         # Use os.walk for more control over directory traversal

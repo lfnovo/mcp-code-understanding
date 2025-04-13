@@ -83,20 +83,17 @@ class RepoMapBuilder:
         self.model = MinimalModel()
         self.cache = cache
 
-    async def initialize_repo_map(
-        self, root_dir: str, language: str = "python"
-    ) -> RepoMap:
+    async def initialize_repo_map(self, root_dir: str) -> RepoMap:
         """
         Initialize RepoMap following core patterns from test_repo_map_simple.py.
 
         Args:
             root_dir: Repository root directory
-            language: Programming language for file filtering
 
         Returns:
             Initialized RepoMap instance
         """
-        logger.debug(f"Initializing RepoMap for {root_dir} with language {language}")
+        logger.debug(f"Initializing RepoMap for {root_dir}")
         rm = RepoMap(
             root=root_dir,
             io=self.io,
@@ -106,35 +103,34 @@ class RepoMapBuilder:
         )
         return rm
 
-    async def gather_files(self, root_dir: str, language: str = "python") -> List[str]:
+    async def gather_files(self, root_dir: str) -> List[str]:
         """
-        Gather files using the same filtering logic as test_repo_map_simple.py.
+        Gather all source files in the repository.
 
         Args:
             root_dir: Repository root directory
-            language: Programming language for filtering
 
         Returns:
             List of files to include in RepoMap
         """
         logger.debug(f"Gathering files for {root_dir}")
-        file_filter = FileFilter.for_language(language)
+        file_filter = FileFilter()  # Create language-agnostic filter
         files = file_filter.find_source_files(root_dir)
         logger.debug(f"Found {len(files)} files to process")
         return files
 
-    async def _do_build(self, repo_path: str, language: str = "python"):
+    async def _do_build(self, repo_path: str):
         """
         Internal method to perform the actual build.
         """
         try:
             # Initialize RepoMap
             logger.debug("Initializing RepoMap...")
-            repo_map = await self.initialize_repo_map(repo_path, language)
+            repo_map = await self.initialize_repo_map(repo_path)
 
             # Gather files
             logger.debug("Gathering files...")
-            files = await self.gather_files(repo_path, language)
+            files = await self.gather_files(repo_path)
 
             # Generate the map
             logger.debug("Generating RepoMap...")

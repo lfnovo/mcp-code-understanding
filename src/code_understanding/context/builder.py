@@ -141,10 +141,11 @@ class RepoMapBuilder:
             output = repo_map.get_ranked_tags_map([], files)
 
             # Log preview of the output
-            logger.debug("RepoMap generation complete. First 20 lines preview:")
             output_lines = output.split("\n")
-            for i, line in enumerate(output_lines[:20]):
-                logger.debug(f"Line {i+1}: {line}")
+            logger.debug(
+                "RepoMap generation complete. First 20 lines preview:\n"
+                + "\n".join(output_lines[:20])
+            )
             if len(output_lines) > 20:
                 logger.debug(f"... and {len(output_lines) - 20} more lines")
 
@@ -155,11 +156,7 @@ class RepoMapBuilder:
                     raise ValueError(f"Repository {repo_path} not found in cache")
 
                 metadata = metadata_dict[repo_path]
-                status = {
-                    "status": "complete",
-                    "completed_at": time.time(),
-                    "output": output,  # Store the RepoMap output
-                }
+                status = {"status": "complete", "completed_at": time.time()}
                 metadata.repo_map_status = status
 
                 # Write back the updated metadata

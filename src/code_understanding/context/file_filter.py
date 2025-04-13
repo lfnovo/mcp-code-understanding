@@ -138,6 +138,21 @@ class FileFilter:
         """Factory method to create a language-specific filter."""
         return cls(language)
 
+    @staticmethod
+    def check_common_patterns(path: Union[str, Path]) -> bool:
+        """
+        Check if a path matches any common ignore patterns.
+        These patterns apply regardless of language or project type.
+
+        Args:
+            path: Path to check (can be string or Path object)
+
+        Returns:
+            True if path should be ignored, False otherwise
+        """
+        spec = PathSpec.from_lines(GitWildMatchPattern, COMMON_IGNORE_PATTERNS)
+        return spec.match_file(str(path))
+
     def should_ignore(self, path: Union[str, Path], is_dir: bool = None) -> bool:
         """
         Check if a file or directory should be ignored.

@@ -23,15 +23,16 @@ class RepoMapExtractor:
         """
         unique_files = set()
 
-        # Extract file paths using same pattern as example
-        file_pattern = r"`([^`]+\.[a-zA-Z0-9]+)`"
-        matches = re.finditer(file_pattern, repo_map_output)
+        # Process each line, following extract_repo_files.py implementation
+        for line in repo_map_output.splitlines():
+            # Skip lines with special characters used for indentation/structure
+            if any(c in line for c in "⋮│"):
+                continue
 
-        for match in matches:
-            file_path = match.group(1)
-            # Normalize path separators
-            normalized_path = str(Path(file_path))
-            unique_files.add(normalized_path)
+            # Remove colons and whitespace
+            line = line.strip().rstrip(":")
+            if line:
+                unique_files.add(line)
 
         return unique_files
 

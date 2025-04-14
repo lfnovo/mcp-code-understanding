@@ -15,6 +15,7 @@ from aider.repomap import RepoMap
 from ..repository.cache import RepositoryCache, RepositoryMetadata
 from .file_filter import FileFilter
 from ..repository.path_utils import get_cache_path
+from .extractor import RepoMapExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -98,12 +99,21 @@ class RepoMapBuilder:
             Initialized RepoMap instance
         """
         logger.debug(f"Initializing RepoMap for {root_dir}")
+        # TODO: It doesn't seem the blow mods are required, but keeping until I can confirm.
+        # rm = RepoMap(
+        #     root=root_dir,
+        #     io=self.io,
+        #     map_tokens=max_tokens if max_tokens is not None else 100000,
+        #     map_mul_no_files=1,  # Prevent 8x multiplication
+        #     max_context_window=None,  # Prevent context window expansion
+        #     main_model=self.model,
+        #     refresh="files",  # Critical setting
+        # )
+
         rm = RepoMap(
             root=root_dir,
             io=self.io,
             map_tokens=max_tokens if max_tokens is not None else 100000,
-            map_mul_no_files=1,  # Prevent 8x multiplication
-            max_context_window=None,  # Prevent context window expansion
             main_model=self.model,
             refresh="files",  # Critical setting
         )
@@ -237,14 +247,24 @@ class RepoMapBuilder:
             return metadata.repo_map_status
 
     async def get_repo_map_content(
-        self, repo_path: str, max_tokens: Optional[int] = None
+        self,
+        repo_path: str,
+        files: Optional[List[str]] = None,
+        directories: Optional[List[str]] = None,
+        max_tokens: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Get repository map content if build is complete.
         Returns appropriate status/error messages otherwise.
         """
+        logger.debug(f"Starting get_repo_map_content for {repo_path}")
+        logger.debug(f"Requested files: {files}")
+        logger.debug(f"Requested directories: {directories}")
+        logger.debug(f"Max tokens: {max_tokens}")
+
         # Transform the input path to cache path
         cache_path = str(get_cache_path(self.cache.cache_dir, repo_path).resolve())
+        logger.debug(f"Resolved cache path: {cache_path}")
 
         with self.cache._file_lock():
             metadata_dict = self.cache._read_metadata()
@@ -277,16 +297,131 @@ class RepoMapBuilder:
             elif status["status"] == "complete":
                 try:
                     repo_map = await self.initialize_repo_map(cache_path, max_tokens)
-                    files = await self.gather_files(cache_path)
-                    content = repo_map.get_ranked_tags_map([], files)
+                    logger.debug(f"Initialized RepoMap with max_tokens={max_tokens}")
+
+                    # Get all files first
+                    all_files = await self.gather_files(cache_path)
+                    logger.debug(f"Total files gathered: {len(all_files)}")
+                    logger.debug(
+                        f"Sample of gathered files: {all_files[:5] if all_files else []}"
+                    )
+
+                    # Filter files based on directories and explicit files
+                    target_files = []
+
+                    # Add explicitly specified files
+                    if files:
+                        target_files.extend(
+                            f
+                            for f in all_files
+                            if any(
+                                f.endswith(specified_file) for specified_file in files
+                            )
+                        )
+                        logger.debug(
+                            f"Files after explicit file filtering: {len(target_files)}"
+                        )
+
+                    # Add files from specified directories
+                    if directories:
+                        for directory in directories:
+                            dir_path = os.path.join(cache_path, directory)
+                            target_files.extend(
+                                f for f in all_files if f.startswith(dir_path)
+                            )
+                        logger.debug(
+                            f"Files after directory filtering: {len(target_files)}"
+                        )
+
+                    # If neither files nor directories specified, use all files
+                    if not files and not directories:
+                        target_files = all_files
+                        logger.debug("Using all gathered files as no filters specified")
+
+                    # Remove duplicates while preserving order
+                    target_files = list(dict.fromkeys(target_files))
+                    logger.debug(f"Final target files count: {len(target_files)}")
+
+                    # Calculate total input tokens
+                    total_input_tokens = 0
+                    file_token_counts = {}
+                    for file in target_files:
+                        try:
+                            with open(file, "r", encoding="utf-8") as f:
+                                content = f.read()
+                                tokens = self.model.token_count(content)
+                                total_input_tokens += tokens
+                                file_token_counts[file] = tokens
+                        except Exception as e:
+                            logger.warning(f"Failed to read file {file}: {e}")
+
+                    logger.debug(f"Total input tokens: {total_input_tokens}")
+                    logger.debug("Top 5 largest files by token count:")
+                    for file, tokens in sorted(
+                        file_token_counts.items(), key=lambda x: x[1], reverse=True
+                    )[:5]:
+                        logger.debug(f"  {file}: {tokens} tokens")
+
+                    # Generate the map
+                    logger.debug("Generating repo map...")
+                    content = repo_map.get_ranked_tags_map([], target_files)
+
+                    output_tokens = self.model.token_count(content)
+                    logger.debug(f"Generated map size: {output_tokens} tokens")
+
+                    # Extract actual included files from repo map output
+                    extractor = RepoMapExtractor()
+                    included_files = await extractor.extract_files(content)
+                    logger.debug(f"Files found in output: {len(included_files)}")
+                    logger.debug(
+                        f"Sample of included files: {list(included_files)[:5] if included_files else []}"
+                    )
+
+                    # Convert target_files to relative paths for comparison
+                    relative_target_files = set()
+                    for file_path in target_files:
+                        # Convert absolute path to relative path by removing cache_path prefix
+                        rel_path = Path(file_path).relative_to(cache_path)
+                        relative_target_files.add(str(rel_path))
+
+                    # Compare with target files to find excluded ones using relative paths
+                    excluded_files = relative_target_files - included_files
+                    logger.debug(f"Total excluded files: {len(excluded_files)}")
+                    if excluded_files:
+                        logger.debug(
+                            f"Sample of excluded files: {list(excluded_files)[:5]}"
+                        )
+                        # Log token counts for excluded files (using absolute paths from original target_files)
+                        excluded_tokens = sum(
+                            file_token_counts.get(f, 0)
+                            for f in target_files
+                            if str(Path(f).relative_to(cache_path)) in excluded_files
+                        )
+                        logger.debug(
+                            f"Total tokens in excluded files: {excluded_tokens}"
+                        )
+
+                    # Group excluded files by directory (using absolute paths)
+                    excluded_by_dir = {}
+                    for rel_file in excluded_files:
+                        # Convert back to absolute path for directory grouping
+                        abs_file = os.path.join(cache_path, rel_file)
+                        dir_path = str(Path(abs_file).parent)
+                        if dir_path not in excluded_by_dir:
+                            excluded_by_dir[dir_path] = 0
+                        excluded_by_dir[dir_path] += 1
+
+                    logger.debug("Excluded files by directory:")
+                    for dir_path, count in excluded_by_dir.items():
+                        logger.debug(f"  {dir_path}: {count} files")
 
                     return {
                         "status": "success",
                         "content": content,
                         "metadata": {
-                            "excluded_files_by_dir": {},  # Empty in phase 1
-                            "is_complete": True,  # Always true in phase 1
-                            "max_tokens": max_tokens,  # Now passing through the actual value
+                            "excluded_files_by_dir": excluded_by_dir,
+                            "is_complete": len(excluded_files) == 0,
+                            "max_tokens": max_tokens,
                         },
                     }
                 except Exception as e:

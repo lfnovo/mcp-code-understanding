@@ -120,7 +120,9 @@ def register_tools(
         Phase 1: Returns full RepoMap output with default metadata values.
         """
         try:
-            return await repo_map_builder.get_repo_map_content(repo_path, max_tokens)
+            return await repo_map_builder.get_repo_map_content(
+                repo_path, files=files, directories=directories, max_tokens=max_tokens
+            )
         except Exception as e:
             logger.error(f"Error getting context: {e}", exc_info=True)
             return {

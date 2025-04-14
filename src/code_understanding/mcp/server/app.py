@@ -105,6 +105,29 @@ def register_tools(
             logger.error(f"Error cloning repository: {e}", exc_info=True)
             return {"status": "error", "error": str(e)}
 
+    @mcp_server.tool(
+        name="get_context",
+        description="Returns RepoMap's semantic analysis of specified files/directories",
+    )
+    async def get_context(
+        repo_path: str,
+        files: List[str] = None,
+        directories: List[str] = None,
+        max_tokens: int = None,
+    ) -> dict:
+        """
+        Returns RepoMap's semantic analysis of specified files/directories.
+        Phase 1: Returns full RepoMap output with default metadata values.
+        """
+        try:
+            return await repo_map_builder.get_repo_map_content(repo_path, max_tokens)
+        except Exception as e:
+            logger.error(f"Error getting context: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "error": f"Unexpected error while getting repository context: {str(e)}",
+            }
+
 
 # Create server instance that can be imported by MCP CLI
 server = create_mcp_server()

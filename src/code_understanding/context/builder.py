@@ -8,12 +8,13 @@ import os
 import time
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Any
 from aider.io import InputOutput
 from aider.repomap import RepoMap
 
 from ..repository.cache import RepositoryCache, RepositoryMetadata
 from .file_filter import FileFilter
+from ..repository.path_utils import get_cache_path
 
 logger = logging.getLogger(__name__)
 
@@ -83,12 +84,15 @@ class RepoMapBuilder:
         self.model = MinimalModel()
         self.cache = cache
 
-    async def initialize_repo_map(self, root_dir: str) -> RepoMap:
+    async def initialize_repo_map(
+        self, root_dir: str, max_tokens: Optional[int] = None
+    ) -> RepoMap:
         """
         Initialize RepoMap following core patterns from test_repo_map_simple.py.
 
         Args:
             root_dir: Repository root directory
+            max_tokens: Maximum tokens for repo map output. Defaults to 100000 if None.
 
         Returns:
             Initialized RepoMap instance
@@ -97,7 +101,9 @@ class RepoMapBuilder:
         rm = RepoMap(
             root=root_dir,
             io=self.io,
-            map_tokens=100000,  # As per example
+            map_tokens=max_tokens if max_tokens is not None else 100000,
+            map_mul_no_files=1,  # Prevent 8x multiplication
+            max_context_window=None,  # Prevent context window expansion
             main_model=self.model,
             refresh="files",  # Critical setting
         )
@@ -229,3 +235,67 @@ class RepoMapBuilder:
                 return {"status": "not_started"}
 
             return metadata.repo_map_status
+
+    async def get_repo_map_content(
+        self, repo_path: str, max_tokens: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Get repository map content if build is complete.
+        Returns appropriate status/error messages otherwise.
+        """
+        # Transform the input path to cache path
+        cache_path = str(get_cache_path(self.cache.cache_dir, repo_path).resolve())
+
+        with self.cache._file_lock():
+            metadata_dict = self.cache._read_metadata()
+            if cache_path not in metadata_dict:
+                return {
+                    "status": "error",
+                    "error": "Repository not found in cache. Please clone/add the repository first.",
+                }
+
+            metadata = metadata_dict[cache_path]
+            if not metadata.repo_map_status:
+                return {
+                    "status": "error",
+                    "error": "Repository map build has not been started for this repository.",
+                }
+
+            status = metadata.repo_map_status
+
+            if status["status"] == "building":
+                return {
+                    "status": "building",
+                    "message": "Repository map is still being built. Please check back in a few moments.",
+                    "estimated_completion_at": status.get("estimated_completion_at"),
+                }
+            elif status["status"] == "failed":
+                return {
+                    "status": "error",
+                    "error": f"Repository map build failed: {status.get('error', 'Unknown error')}",
+                }
+            elif status["status"] == "complete":
+                try:
+                    repo_map = await self.initialize_repo_map(cache_path, max_tokens)
+                    files = await self.gather_files(cache_path)
+                    content = repo_map.get_ranked_tags_map([], files)
+
+                    return {
+                        "status": "success",
+                        "content": content,
+                        "metadata": {
+                            "excluded_files_by_dir": {},  # Empty in phase 1
+                            "is_complete": True,  # Always true in phase 1
+                            "max_tokens": max_tokens,  # Now passing through the actual value
+                        },
+                    }
+                except Exception as e:
+                    return {
+                        "status": "error",
+                        "error": f"Failed to generate repository map: {str(e)}",
+                    }
+            else:
+                return {
+                    "status": "error",
+                    "error": f"Unknown build status: {status['status']}",
+                }

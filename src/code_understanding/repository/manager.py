@@ -15,7 +15,7 @@ import pathspec
 
 from ..config import RepositoryConfig
 from .path_utils import is_git_url, get_cache_path
-from .cache import RepositoryCache
+from .cache import RepositoryCache, RepositoryMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -142,17 +142,44 @@ class RepositoryManager:
         """Get or create a Repository instance for the given path."""
         is_git = is_git_url(path)
         cache_path = get_cache_path(self.cache_dir, path)
-        str_path = str(cache_path.resolve())  # Ensure absolute path
+        str_path = str(cache_path.resolve())
 
-        # If it's a Git URL and not cached, clone it
+        # If it's a Git URL and not cached, start async clone
         if is_git and not cache_path.exists():
             try:
-                result = await self.clone_repository(path)
-                if result["status"] != "success":
-                    raise Exception(result.get("error", "Unknown error during clone"))
-                cache_path = Path(result["path"])
+                # Ensure we can add another repo before starting clone
+                if not await self.cache.prepare_for_clone(str_path):
+                    raise Exception("Failed to prepare cache for clone")
+
+                # Start clone in background
+                asyncio.create_task(self._do_clone(path, str_path))
+
+                # Create temporary repository instance
+                repository = Repository(
+                    repo_id=str_path,
+                    root_path=cache_path,
+                    repo_type="git",
+                    is_git=True,
+                    url=path,
+                    manager=self,
+                )
+                self.repositories[str_path] = repository
+
+                # Initialize metadata with not_started status
+                with self.cache._file_lock():
+                    metadata_dict = self.cache._read_metadata()
+                    if str_path not in metadata_dict:
+                        metadata_dict[str_path] = RepositoryMetadata(
+                            path=str_path,
+                            url=path,
+                            last_access=time.time(),
+                        )
+                    self.cache._write_metadata(metadata_dict)
+
+                return repository
+
             except Exception as e:
-                raise Exception(f"Failed to clone repository: {e}")
+                raise Exception(f"Failed to start repository clone: {e}")
 
         # For local paths that aren't in cache, verify they exist
         if not is_git and not cache_path.exists():
@@ -196,13 +223,59 @@ class RepositoryManager:
 
         return repository
 
+    async def _do_clone(self, url: str, str_path: str, branch: Optional[str] = None):
+        """Internal method to perform the actual clone"""
+        cache_path = Path(str_path)
+
+        try:
+            # Update status to cloning
+            await self.cache.update_clone_status(
+                str_path, {"status": "cloning", "started_at": time.time()}
+            )
+
+            # Create parent directories
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Perform clone in thread pool to not block event loop
+            await asyncio.to_thread(Repo.clone_from, url, cache_path, branch=branch)
+
+            # Update success status
+            await self.cache.update_clone_status(
+                str_path, {"status": "complete", "completed_at": time.time()}
+            )
+
+            # Register the repo in cache
+            await self.cache.add_repo(str_path, url)
+
+            # Import here to avoid circular dependency
+            from ..context.builder import RepoMapBuilder
+
+            # Start RepoMap build now that clone is complete
+            repo_map_builder = RepoMapBuilder(self.cache)
+            await repo_map_builder.start_build(str_path)
+
+        except Exception as e:
+            logger.error(f"Clone failed for {url}: {str(e)}")
+            # Update failure status
+            await self.cache.update_clone_status(
+                str_path,
+                {"status": "failed", "error": str(e), "completed_at": time.time()},
+            )
+
+            # Cleanup failed clone
+            if cache_path.exists():
+                shutil.rmtree(cache_path)
+            if str_path in self.repositories:
+                del self.repositories[str_path]
+            raise
+
     async def clone_repository(
         self, url: str, branch: Optional[str] = None
     ) -> Dict[str, Any]:
         """Clone a remote repository."""
         logger.info(f"Starting clone of repository: {url}")
         cache_path = get_cache_path(self.cache_dir, url)
-        str_path = str(cache_path.resolve())  # Ensure absolute path
+        str_path = str(cache_path.resolve())
         logger.debug(f"Cache path for repository: {str_path}")
 
         # First, ensure we can add another repo
@@ -212,30 +285,17 @@ class RepositoryManager:
             return {"status": "error", "error": "Failed to prepare cache for clone"}
 
         try:
-            # Create parent directories after prepare succeeds
-            logger.debug(f"Creating parent directories: {cache_path.parent}")
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Perform the clone
-            logger.info(f"Cloning repository from {url} to {cache_path}")
-            git_repo = Repo.clone_from(url, cache_path, branch=branch)
-            logger.info("Clone successful")
-
-            # Register the new repo
-            logger.debug("Registering repository in cache")
-            await self.cache.add_repo(str_path, url)
+            # Start clone in background
+            asyncio.create_task(self._do_clone(url, str_path, branch))
 
             return {
-                "status": "success",
+                "status": "pending",
                 "path": str_path,
-                "commit": str(git_repo.head.commit),
+                "message": "Clone started in background",
             }
+
         except Exception as e:
-            logger.error(f"Error during clone: {str(e)}", exc_info=True)
-            # Cleanup failed clone
-            if cache_path.exists():
-                logger.debug(f"Cleaning up failed clone at {cache_path}")
-                shutil.rmtree(cache_path)
+            logger.error(f"Error initiating clone: {str(e)}", exc_info=True)
             return {"status": "error", "error": str(e)}
 
     async def refresh_repository(self, path: str) -> Dict[str, Any]:

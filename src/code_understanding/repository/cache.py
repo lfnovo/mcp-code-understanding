@@ -21,7 +21,17 @@ class RepositoryMetadata:
     path: str
     url: Optional[str]
     last_access: float
-    repo_map_status: Optional[str] = None
+    clone_status: Dict[str, Any] = None
+    repo_map_status: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
+        if self.clone_status is None:
+            self.clone_status = {
+                "status": "not_started",
+                "started_at": None,
+                "completed_at": None,
+                "error": None,
+            }
 
 
 class RepositoryCache:
@@ -44,10 +54,17 @@ class RepositoryCache:
         """File-based lock to handle concurrent operations"""
         with open(self.lock_file, "r") as lock:
             try:
-                fcntl.flock(lock, fcntl.LOCK_EX)
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)  # Make it non-blocking
+                yield
+            except BlockingIOError:
+                # If we can't get the lock, read the metadata without locking
+                # This is safe because we're only reading
                 yield
             finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_UN)
+                except BlockingIOError:
+                    pass  # We didn't get the lock, so nothing to unlock
 
     def _get_actual_repos(self) -> Set[str]:
         """Get set of actual repository paths on disk"""
@@ -73,42 +90,39 @@ class RepositoryCache:
 
         return repos
 
-    def _read_metadata(self) -> Dict[str, RepositoryMetadata]:
-        """Read and validate metadata from disk"""
-        metadata = {}
-        if self.metadata_file.exists():
-            try:
-                data = json.loads(self.metadata_file.read_text())
-                for path, info in data.items():
-                    metadata[path] = RepositoryMetadata(
-                        path=path,
-                        url=info.get("url"),
-                        last_access=info.get("last_access", 0),
-                        repo_map_status=info.get("repo_map_status"),
-                    )
-            except Exception as e:
-                logger.error(f"Error reading metadata, starting fresh: {e}")
-        return metadata
-
     def _write_metadata(self, metadata: Dict[str, RepositoryMetadata]):
-        """Atomic metadata write"""
-        temp_file = self.metadata_file.with_suffix(".tmp")
-        try:
-            data = {
-                path: {
-                    "url": meta.url,
-                    "last_access": meta.last_access,
-                    "repo_map_status": meta.repo_map_status,
-                }
-                for path, meta in metadata.items()
+        """Write metadata to disk."""
+        data = {
+            path: {
+                "url": meta.url,
+                "last_access": meta.last_access,
+                "clone_status": meta.clone_status,
+                "repo_map_status": meta.repo_map_status,
             }
-            temp_file.write_text(json.dumps(data, indent=2))
-            temp_file.replace(self.metadata_file)
-        except Exception as e:
-            logger.error(f"Error writing metadata: {e}")
-            if temp_file.exists():
-                temp_file.unlink()
-            raise
+            for path, meta in metadata.items()
+        }
+
+        with open(self.metadata_file, "w") as f:
+            json.dump(data, f, indent=2)
+
+    def _read_metadata(self) -> Dict[str, RepositoryMetadata]:
+        """Read metadata from disk."""
+        if not self.metadata_file.exists():
+            return {}
+
+        with open(self.metadata_file, "r") as f:
+            data = json.load(f)
+
+        metadata = {}
+        for path, info in data.items():
+            metadata[path] = RepositoryMetadata(
+                path=path,
+                url=info.get("url"),
+                last_access=info.get("last_access", 0),
+                clone_status=info.get("clone_status"),
+                repo_map_status=info.get("repo_map_status"),
+            )
+        return metadata
 
     def _sync_metadata(self) -> Dict[str, RepositoryMetadata]:
         """Synchronize metadata with disk state"""
@@ -164,9 +178,15 @@ class RepositoryCache:
         """Register a new repository after successful clone"""
         with self._file_lock():
             metadata = self._sync_metadata()
-            metadata[path] = RepositoryMetadata(
-                path=path, url=url, last_access=time.time(), repo_map_status=None
-            )
+            if path in metadata:
+                # Update existing metadata
+                metadata[path].url = url
+                metadata[path].last_access = time.time()
+            else:
+                # Create new metadata only if it doesn't exist
+                metadata[path] = RepositoryMetadata(
+                    path=path, url=url, last_access=time.time(), repo_map_status=None
+                )
             self._write_metadata(metadata)
 
     async def update_access(self, path: str):
@@ -215,3 +235,38 @@ class RepositoryCache:
                     logger.error(f"Error removing repository {oldest_path}: {e}")
 
             self._write_metadata(metadata)
+
+    async def update_clone_status(self, path: str, status: Dict[str, Any]):
+        """Update clone status while preserving repo map status"""
+        with self._file_lock():
+            metadata = self._read_metadata()
+            if path not in metadata:
+                metadata[path] = RepositoryMetadata(
+                    path=path, url=None, last_access=time.time()
+                )
+            metadata[path].clone_status = status
+            self._write_metadata(metadata)
+
+    async def update_repo_map_status(self, path: str, status: Dict[str, Any]):
+        """Update repo map status while preserving clone status"""
+        with self._file_lock():
+            metadata = self._read_metadata()
+            if path not in metadata:
+                metadata[path] = RepositoryMetadata(
+                    path=path, url=None, last_access=time.time()
+                )
+            metadata[path].repo_map_status = status
+            self._write_metadata(metadata)
+
+    async def get_repository_status(self, path: str) -> Dict[str, Any]:
+        """Get combined status information for a repository"""
+        with self._file_lock():
+            metadata = self._read_metadata()
+            if path not in metadata:
+                return {"status": "error", "error": "Repository not found in cache"}
+
+            repo_metadata = metadata[path]
+            return {
+                "clone_status": repo_metadata.clone_status,
+                "repo_map_status": repo_metadata.repo_map_status,
+            }

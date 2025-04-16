@@ -78,19 +78,11 @@ def register_tools(
             repo = await repo_manager.get_repository(url)
             logger.debug(f"[TRACE] clone_repo: get_repository completed for {url}")
 
-            # Start RepoMap build asynchronously - this returns immediately
-            logger.debug(f"[TRACE] clone_repo: Starting async RepoMap build")
-            await repo_map_builder.start_build(str(repo.root_path))
-            logger.debug(f"[TRACE] clone_repo: Async RepoMap build started")
-
-            logger.info(
-                f"Successfully cloned repository {url} and started RepoMap build"
-            )
-
+            # Note: RepoMap build will be started automatically after clone completes
             response = {
-                "status": "success",
+                "status": "pending",
                 "path": str(repo.root_path),
-                "message": "Repository cloned and RepoMap build started",
+                "message": "Repository clone started in background",
             }
             logger.debug(
                 f"[TRACE] clone_repo: Preparing to return response: {response}"

@@ -1,0 +1,116 @@
+
+conduit/core/__init__.py
+
+conduit/core/config.py:
+⋮
+│class SiteConfig(BaseModel):
+⋮
+│class JiraConfig(BaseModel):
+│    """Jira configuration."""
+│
+⋮
+│    class Config:
+⋮
+│    def get_site_config(self, site_alias: Optional[str] = None) -> SiteConfig:
+⋮
+│class ConfluenceConfig(BaseModel):
+│    """Confluence configuration."""
+│
+⋮
+│    class Config:
+⋮
+│    def get_site_config(self, site_alias: Optional[str] = None) -> SiteConfig:
+⋮
+│class Config(BaseModel):
+│    """Base configuration class."""
+│
+⋮
+│    def get_content_dir(self) -> Path:
+⋮
+│def get_config_dir() -> Path:
+⋮
+│def create_default_config(config_path: Path) -> None:
+⋮
+│def load_config() -> Config:
+⋮
+
+conduit/core/content.py:
+⋮
+│class ContentManager:
+│    def __init__(self, content_dir: Path):
+│        """Initialize the content manager with a directory for storing content files.
+│
+│        Args:
+│            content_dir: Path to the directory where content files will be stored
+│        """
+│        self.content_dir = content_dir
+│        self.content_dir.mkdir(parents=True, exist_ok=True)
+│        self.failed_content_dir = content_dir / "failed_content"
+│        self.failed_content_dir.mkdir(parents=True, exist_ok=True)
+⋮
+│    def generate_content_path(self) -> Path:
+⋮
+│    def write_content(self, file_path: Path, content: str) -> None:
+⋮
+│    def read_content(self, file_path: Path) -> str:
+⋮
+│    def cleanup_content_file(self, file_path: Path) -> None:
+⋮
+│    def mark_content_as_failed(self, file_path: Path) -> Path:
+⋮
+
+conduit/core/exceptions.py:
+│class ConduitError(Exception):
+⋮
+│class ConfigurationError(ConduitError):
+⋮
+│class PlatformError(ConduitError):
+⋮
+
+conduit/core/logger.py:
+⋮
+│logger = logging.getLogger("conduit")
+
+conduit/core/services.py:
+⋮
+│class ConfigService:
+│    """Service layer for configuration operations"""
+│
+│    @classmethod
+│    def list_configs(cls) -> Dict:
+⋮
+│class ConfluenceService:
+│    """Service layer for Confluence operations"""
+│
+│    @classmethod
+│    def _get_client(cls, site_alias: Optional[str] = None) -> ConfluenceClient:
+⋮
+│    @classmethod
+│    async def list_pages(
+│        cls, space_key: str, site_alias: Optional[str] = None
+⋮
+│    @classmethod
+│    async def get_page(
+│        cls, space_key: str, page_title: str, site_alias: Optional[str] = None
+⋮
+│    @classmethod
+│    async def create_page_from_markdown(
+│        cls,
+│        space_key: str,
+│        title: str,
+│        content: str,
+│        parent_id: Optional[str] = None,
+│        site_alias: Optional[str] = None,
+⋮
+│    @classmethod
+│    async def create_page_from_markdown_direct(
+│        cls,
+│        space_key: str,
+│        title: str,
+│        content: str,
+│        parent_id: Optional[str] = None,
+│        site_alias: Optional[str] = None,
+│        update: bool = True,
+│        minor_edit: bool = False,
+│        version_comment: str = "Updated via Conduit",
+⋮

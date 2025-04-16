@@ -70,40 +70,39 @@ def register_tools(
             logger.error(f"Error refreshing repository: {e}", exc_info=True)
             return {"status": "error", "error": str(e)}
 
-    @mcp_server.tool(name="clone_repo", description="Clone a new remote repository")
+    @mcp_server.tool(name="clone_repo")
     async def clone_repo(url: str, branch: str = None) -> dict:
-        """
-        Clone a new remote repository and initialize RepoMap.
-
-        Args:
-            url: Repository URL to clone
-            branch: Branch to checkout (defaults to None)
-
-        Returns:
-            Dictionary containing status and repository information
-        """
+        """Clone a repository and start building its RepoMap."""
         try:
-            # Clone/get repository
+            logger.debug(f"[TRACE] clone_repo: Starting get_repository for {url}")
             repo = await repo_manager.get_repository(url)
-            repo_path = str(repo.root_path.resolve())  # Ensure absolute path
+            logger.debug(f"[TRACE] clone_repo: get_repository completed for {url}")
 
-            # Start RepoMap build
-            await repo_map_builder.start_build(repo_path)
-
-            # Get initial build status
-            build_status = await repo_map_builder.get_build_status(repo_path)
+            # Start RepoMap build asynchronously - this returns immediately
+            logger.debug(f"[TRACE] clone_repo: Starting async RepoMap build")
+            await repo_map_builder.start_build(str(repo.root_path))
+            logger.debug(f"[TRACE] clone_repo: Async RepoMap build started")
 
             logger.info(
                 f"Successfully cloned repository {url} and started RepoMap build"
             )
-            return {
+
+            response = {
                 "status": "success",
-                "path": repo_path,
-                "repo_map_status": build_status,
+                "path": str(repo.root_path),
+                "message": "Repository cloned and RepoMap build started",
             }
+            logger.debug(
+                f"[TRACE] clone_repo: Preparing to return response: {response}"
+            )
+            return response
         except Exception as e:
             logger.error(f"Error cloning repository: {e}", exc_info=True)
-            return {"status": "error", "error": str(e)}
+            error_response = {"status": "error", "error": str(e)}
+            logger.debug(
+                f"[TRACE] clone_repo: Returning error response: {error_response}"
+            )
+            return error_response
 
     @mcp_server.tool(
         name="get_context",

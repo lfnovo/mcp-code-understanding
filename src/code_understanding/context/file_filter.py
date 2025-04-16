@@ -12,6 +12,7 @@ from pathspec.patterns import GitWildMatchPattern
 # Only include truly common patterns here - not language-specific ones
 COMMON_IGNORE_PATTERNS: List[str] = [
     # Directories - need both the directory itself and its contents
+    ".aider.*",
     ".git",
     ".git/**",
     ".idea",

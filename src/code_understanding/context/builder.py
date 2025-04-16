@@ -7,6 +7,7 @@ import asyncio
 import os
 import time
 import logging
+import tiktoken
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Any
 from aider.io import InputOutput
@@ -26,6 +27,26 @@ class MinimalModel:
     def token_count(self, text):
         # Rough approximation of token count
         return len(text.split()) * 1.3
+
+
+class TiktokenModel:
+    """Model implementation using tiktoken for exact GPT-2 token counts."""
+
+    def __init__(self):
+        # Initialize the GPT-2 encoder
+        self.encoder = tiktoken.get_encoding("gpt2")
+
+    def token_count(self, text):
+        """
+        Get exact token count using GPT-2 tokenizer.
+
+        Args:
+            text: Text to count tokens for
+
+        Returns:
+            Exact token count
+        """
+        return len(self.encoder.encode(text))
 
 
 class MinimalIO(InputOutput):
@@ -82,7 +103,8 @@ class RepoMapBuilder:
 
     def __init__(self, cache: RepositoryCache):
         self.io = MinimalIO()
-        self.model = MinimalModel()
+        # self.model = MinimalModel()
+        self.model = TiktokenModel()
         self.cache = cache
 
     async def initialize_repo_map(
@@ -93,37 +115,19 @@ class RepoMapBuilder:
 
         Args:
             root_dir: Repository root directory
-            max_tokens: Maximum tokens for repo map output. Defaults to 100000 if None.
+            max_tokens: Maximum tokens for repo map output. Defaults to 1000000 if None.
 
         Returns:
             Initialized RepoMap instance
         """
         logger.debug(f"Initializing RepoMap for {root_dir} (max_tokens={max_tokens})")
-        # TODO: It doesn't seem the blow mods are required, but keeping until I can confirm.
-        # rm = RepoMap(
-        #     root=root_dir,
-        #     io=self.io,
-        #     map_tokens=max_tokens if max_tokens is not None else 100000,
-        #     map_mul_no_files=1,  # Prevent 8x multiplication
-        #     max_context_window=None,  # Prevent context window expansion
-        #     main_model=self.model,
-        #     refresh="files",  # Critical setting
-        # )
-
-        # rm = RepoMap(
-        #     root=root_dir,
-        #     io=self.io,
-        #     map_tokens=max_tokens if max_tokens is not None else 100000,
-        #     main_model=self.model,
-        #     refresh="files",  # Critical setting
-        # )
-
         rm = RepoMap(
             root=root_dir,
             io=self.io,
             main_model=self.model,
-            map_tokens=100000,  # Large token limit
-            verbose=False,  # Changed from True to False to reduce output
+            map_tokens=max_tokens if max_tokens is not None else 1000000,
+            refresh="files",
+            max_context_window=max_tokens if max_tokens is not None else 1000000,
         )
         return rm
 
@@ -141,6 +145,60 @@ class RepoMapBuilder:
         files = file_filter.find_source_files(root_dir)
         logger.debug(f"Found {len(files)} source files in {root_dir}")
         return files
+
+    async def gather_files_targeted(
+        self,
+        root_dir: str,
+        files: Optional[List[str]] = None,
+        directories: Optional[List[str]] = None,
+    ) -> List[str]:
+        """
+        Optimized file gathering that only scans specified directories or checks specific files.
+
+        Args:
+            root_dir: Repository root directory
+            files: Optional list of specific files to check
+            directories: Optional list of directories to scan
+
+        Returns:
+            List of valid source files that match the criteria
+        """
+        file_filter = FileFilter()
+        target_files = []
+
+        if files:
+            # Direct file checking
+            for file in files:
+                file_path = os.path.join(root_dir, file)
+                if os.path.exists(file_path) and not file_filter.should_ignore(file):
+                    target_files.append(file_path)
+
+        if directories:
+            # Only scan specified directories
+            for directory in directories:
+                dir_path = os.path.join(root_dir, directory)
+                if os.path.exists(dir_path) and os.path.isdir(dir_path):
+                    for dirpath, dirnames, filenames in os.walk(dir_path):
+                        # Remove ignored directories to prevent traversal
+                        dirnames[:] = [
+                            d
+                            for d in dirnames
+                            if not file_filter.should_ignore(
+                                os.path.relpath(os.path.join(dirpath, d), root_dir)
+                            )
+                        ]
+
+                        for filename in filenames:
+                            file_path = os.path.join(dirpath, filename)
+                            rel_path = os.path.relpath(file_path, root_dir)
+                            if not file_filter.should_ignore(rel_path):
+                                target_files.append(file_path)
+
+        target_files = list(dict.fromkeys(target_files))  # Remove duplicates
+        logger.debug(
+            f"Found {len(target_files)} source files in specified paths within {root_dir}"
+        )
+        return sorted(target_files)
 
     async def _do_build(self, repo_path: str):
         """
@@ -297,24 +355,17 @@ class RepoMapBuilder:
         # Only proceed with content generation if both clone and build are complete
         try:
             repo_map = await self.initialize_repo_map(cache_path, max_tokens)
-            all_files = await self.gather_files(cache_path)
-            target_files = []
 
-            # Filter files based on input parameters
-            if files:
-                target_files.extend(
-                    f
-                    for f in all_files
-                    if any(f.endswith(specified_file) for specified_file in files)
+            # Use optimized gathering if specific files/directories are provided
+            if files or directories:
+                target_files = await self.gather_files_targeted(
+                    cache_path, files=files, directories=directories
                 )
-            if directories:
-                for directory in directories:
-                    dir_path = os.path.join(cache_path, directory)
-                    target_files.extend(f for f in all_files if f.startswith(dir_path))
-            if not files and not directories:
+            else:
+                # Fall back to full repository scan if no specific paths provided
+                all_files = await self.gather_files(cache_path)
                 target_files = all_files
 
-            target_files = list(dict.fromkeys(target_files))
             logger.debug(f"Processing {len(target_files)} files")
 
             # Calculate token counts

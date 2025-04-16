@@ -1,12 +1,16 @@
 """
 File filtering implementation for the Code Understanding service.
-Uses PathSpec for .gitignore-style pattern matching.
+Uses PathSpec for .gitignore-style pattern matching and identify for text file detection.
 """
 
 from pathlib import Path
 from typing import Union, Dict, List, Optional
 from pathspec import PathSpec
 from pathspec.patterns import GitWildMatchPattern
+from identify import identify
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Directories and files that should be ignored for all languages
 # Only include truly common patterns here - not language-specific ones
@@ -21,10 +25,167 @@ COMMON_IGNORE_PATTERNS: List[str] = [
     ".vscode/**",
     "node_modules",
     "node_modules/**",
+    ".vs",
+    ".vs/**",
+    "tmp",
+    "tmp/**",
+    "temp",
+    "temp/**",
+    ".tmp",
+    ".tmp/**",
+    ".cache",
+    ".cache/**",
+    ".sass-cache",
+    ".sass-cache/**",
+    "docs/_build",
+    "docs/_build/**",
+    "_site",
+    "_site/**",
+    ".docusaurus",
+    ".docusaurus/**",
+    "api-docs",
+    "api-docs/**",
+    "javadoc",
+    "javadoc/**",
+    "doxygen",
+    "doxygen/**",
+    # Report and template directories
+    "jasperreports",
+    "jasperreports/**",
+    "jasperreports-legacy",
+    "jasperreports-legacy/**",
     # Files
     ".DS_Store",
     "*.log",
     ".env",
+    # Configuration and properties files
+    "*.properties",
+    "*.conf",
+    "*.config",
+    "*.ini",
+    # Security and certificate files
+    "*.keystore",
+    "*.jks",
+    "*.truststore",
+    "*.p12",
+    # Build and compilation artifacts
+    "*.o",
+    "*.obj",
+    "*.dll",
+    "*.so",
+    "*.dylib",
+    "*.exe",
+    "*.out",
+    "*.a",
+    "*.lib",
+    # IDE and editor files
+    "*.swp",
+    "*.swo",
+    "*~",
+    "*.bak",
+    ".project",
+    ".classpath",
+    "*.sublime-*",
+    "*.suo",
+    "*.user",
+    "*.workspace",
+    "*.cbp",
+    # Package lock files
+    "yarn.lock",
+    "package-lock.json",
+    "Gemfile.lock",
+    "poetry.lock",
+    "Cargo.lock",
+    "composer.lock",
+    # Database and data files
+    "*.db",
+    "*.sqlite",
+    "*.sqlite3",
+    "*.mdb",
+    "*.ldb",
+    "*.csv",
+    "*.dat",
+    # Media files
+    "*.mp3",
+    "*.mp4",
+    "*.wav",
+    "*.ogg",
+    "*.flac",
+    "*.avi",
+    "*.mov",
+    "*.wmv",
+    "*.m4a",
+    "*.m4v",
+    # Archive files
+    "*.zip",
+    "*.tar",
+    "*.gz",
+    "*.bz2",
+    "*.7z",
+    "*.rar",
+    "*.iso",
+    # Certificate and key files
+    "*.pem",
+    "*.crt",
+    "*.ca-bundle",
+    "*.cer",
+    "*.p7b",
+    "*.p7s",
+    "*.pfx",
+    "*.key",
+    # Office documents
+    "*.doc",
+    "*.docx",
+    "*.xls",
+    "*.xlsx",
+    "*.ppt",
+    "*.pptx",
+    "*.odt",
+    "*.ods",
+    "*.odp",
+    # Image files
+    "*.png",
+    "*.jpg",
+    "*.jpeg",
+    "*.gif",
+    "*.bmp",
+    "*.tiff",
+    "*.tif",
+    "*.ico",
+    "*.svg",
+    "*.webp",
+    "*.psd",
+    "*.ai",
+    "*.eps",
+    "*.raw",
+    "*.cr2",
+    "*.nef",
+    "*.heic",
+    "*.heif",
+    "*.avif",
+    # Font files
+    "*.eot",
+    "*.ttf",
+    "*.woff",
+    "*.woff2",
+    "*.otf",
+    # Document files
+    "*.pdf",
+    # Image thumbnails and previews
+    "*.thumb",
+    "*.thumbnail",
+    "*_thumb.*",
+    "*_preview.*",
+    # Image-related metadata
+    "*.xmp",  # Adobe metadata
+    "Thumbs.db",  # Windows thumbnail cache
+    ".picasa.ini",  # Picasa metadata
+    # Adobe and design files that often contain images
+    "*.indd",  # InDesign
+    "*.sketch",  # Sketch App
+    "*.fig",  # Figma
+    "*.xcf",  # GIMP
+    "*.cdr",  # CorelDraw
 ]
 
 # Language-specific ignore patterns
@@ -102,133 +263,77 @@ LANGUAGE_EXTENSIONS: Dict[str, List[str]] = {
 
 
 class FileFilter:
-    """PathSpec-based file filtering."""
+    """Handles file filtering using PathSpec and identify."""
 
-    def __init__(
-        self,
-        languages: Optional[Union[str, List[str]]] = None,
-        use_common_patterns: bool = True,
-        use_language_patterns: bool = True,
-    ):
-        """Initialize with optional language-specific patterns and filtering options.
-
-        Args:
-            languages: Optional language(s) to use for language-specific patterns
-            use_common_patterns: Whether to use common ignore patterns
-            use_language_patterns: Whether to use language-specific patterns
+    def __init__(self, language: Optional[str] = None):
         """
-        # Store languages for reference
-        if isinstance(languages, str):
-            self.languages = [languages]
-        else:
-            self.languages = languages or []
-
-        self.use_common_patterns = use_common_patterns
-        self.use_language_patterns = use_language_patterns
-
-        # Set up ignore patterns based on configuration
-        ignore_patterns = []
-        if use_common_patterns:
-            ignore_patterns.extend(COMMON_IGNORE_PATTERNS)
-
-        # Always include ALL language patterns when use_language_patterns is True
-        if use_language_patterns:
-            for lang_patterns in LANGUAGE_IGNORE_PATTERNS.values():
-                ignore_patterns.extend(lang_patterns)
-
-        # Create PathSpec objects
-        self.ignore_spec = PathSpec.from_lines(GitWildMatchPattern, ignore_patterns)
-
-        # Load .gitignore if it exists
-        self.gitignore_spec = None
-
-    def _load_gitignore(self, root_dir: Union[str, Path]) -> Optional[PathSpec]:
-        """Load .gitignore patterns if the file exists.
+        Initialize with optional language-specific patterns.
 
         Args:
-            root_dir: Repository root directory
+            language: Optional language to include specific ignore patterns
+        """
+        patterns = COMMON_IGNORE_PATTERNS.copy()
+        if language and language in LANGUAGE_IGNORE_PATTERNS:
+            patterns.extend(LANGUAGE_IGNORE_PATTERNS[language])
+        self.spec = PathSpec.from_lines(GitWildMatchPattern, patterns)
+
+    def _matches_ignore_pattern(self, path: Union[str, Path]) -> bool:
+        """Check if path matches any ignore patterns."""
+        return self.spec.match_file(str(path))
+
+    def is_text_file(self, path: Union[str, Path]) -> bool:
+        """
+        Check if a file is a text file using identify.
+
+        Args:
+            path: Path to the file to check
 
         Returns:
-            PathSpec object with .gitignore patterns, or None if file doesn't exist
+            bool: True if file is text, False otherwise
         """
-        gitignore_path = Path(root_dir) / ".gitignore"
-        if not gitignore_path.exists():
-            return None
-
         try:
-            with open(gitignore_path, "r") as f:
-                patterns = f.readlines()
-            return PathSpec.from_lines(GitWildMatchPattern, patterns)
+            tags = identify.tags_from_path(str(path))
+            return "text" in tags
         except Exception as e:
-            logger.warning(f"Failed to load .gitignore: {e}")
-            return None
+            logger.debug(f"identify failed for {path}: {e}")
+            return False
 
-    def should_ignore(self, path: Union[str, Path], is_dir: bool = None) -> bool:
+    def should_ignore(self, path: Union[str, Path]) -> bool:
         """
-        Check if a file or directory should be ignored.
+        Determine if a path should be ignored.
 
         Args:
-            path: The path to check
-            is_dir: Whether the path is a directory (if None, will be determined from the path)
+            path: Path to check
 
         Returns:
-            True if the path should be ignored, False otherwise
+            bool: True if path should be ignored, False otherwise
         """
-        # Convert to string and normalize path separators
-        if isinstance(path, Path):
-            path_str = path.as_posix()
-        else:
-            path_str = Path(path).as_posix()
-
-        # Determine if it's a directory if not specified
-        if is_dir is None:
-            p = Path(path)
-            is_dir = p.is_dir() if p.exists() else path_str.endswith("/")
-
-        # Check .gitignore patterns first if they exist
-        if self.gitignore_spec and self.gitignore_spec.match_file(path_str):
+        # First check against ignore patterns (fast)
+        if self._matches_ignore_pattern(path):
             return True
 
-        # Then check our ignore patterns
-        return self.ignore_spec.match_file(path_str)
+        # If it's a file, check if it's not a text file
+        path_obj = Path(path)
+        if path_obj.is_file():
+            return not self.is_text_file(path)
+
+        return False
 
     def find_source_files(self, root_dir: Union[str, Path]) -> List[str]:
-        """Find all non-ignored source files in the directory."""
+        """
+        Find all source files in directory that aren't ignored.
+
+        Args:
+            root_dir: Root directory to search
+
+        Returns:
+            List[str]: List of file paths that should be included
+        """
         root_path = Path(root_dir)
+        result = []
 
-        # Load .gitignore patterns if they exist
-        self.gitignore_spec = self._load_gitignore(root_path)
+        for path in root_path.rglob("*"):
+            if path.is_file() and not self.should_ignore(path):
+                result.append(str(path))
 
-        source_files = []
-
-        # Use os.walk for more control over directory traversal
-        import os
-
-        for dirpath, dirnames, filenames in os.walk(root_path):
-            rel_dirpath = os.path.relpath(dirpath, root_path)
-            if rel_dirpath == ".":
-                rel_dirpath = ""
-
-            # Remove ignored directories from dirnames to prevent traversal
-            # This modifies dirnames in-place to affect the walk
-            i = 0
-            while i < len(dirnames):
-                dir_path = (
-                    os.path.join(rel_dirpath, dirnames[i])
-                    if rel_dirpath
-                    else dirnames[i]
-                )
-                if self.should_ignore(dir_path, is_dir=True):
-                    dirnames.pop(i)
-                else:
-                    i += 1
-
-            # Add non-ignored files
-            for filename in filenames:
-                file_path = (
-                    os.path.join(rel_dirpath, filename) if rel_dirpath else filename
-                )
-                if not self.should_ignore(file_path, is_dir=False):
-                    source_files.append(os.path.join(dirpath, filename))
-
-        return sorted(source_files)
+        return sorted(result)

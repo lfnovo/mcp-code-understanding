@@ -85,19 +85,68 @@ def register_tools(
 
     @mcp_server.tool(
         name="refresh_repo",
-        description="Update a remote repository with latest changes",
+        description="Update a previously cloned repository in MCP's cache with latest changes and trigger reanalysis. Use this to ensure analysis is based on latest code.",
     )
     async def refresh_repo(repo_path: str) -> dict:
-        """Update a remote repository with latest changes."""
+        """
+        Update a previously cloned repository in MCP's cache and refresh its analysis.
+
+        For Git repositories, performs a git pull to get latest changes. Then triggers
+        a new repository map build to ensure all analysis is based on the updated code.
+
+        Args:
+            repo_path (str): Path or URL matching what was originally provided to clone_repo
+
+        Returns:
+            dict: Response with format:
+                {
+                    "status": str,  # "success", "error", or "not_git_repo"
+                    "commit": str,  # (On success) Hash of the latest commit
+                    "error": str    # (On error) Error message
+                }
+
+        Note:
+            - This is a setup operation for MCP analysis only
+            - Updates MCP's cached copy, does not modify the source repository
+            - Automatically triggers rebuild of repository map with updated files
+            - For non-Git repositories, returns {"status": "not_git_repo"}
+        """
         try:
             return await repo_manager.refresh_repository(repo_path)
         except Exception as e:
             logger.error(f"Error refreshing repository: {e}", exc_info=True)
             return {"status": "error", "error": str(e)}
 
-    @mcp_server.tool(name="clone_repo")
+    @mcp_server.tool(
+        name="clone_repo",
+        description="Clone a repository into the MCP server's analysis cache and initiate background analysis. Required before using other analysis endpoints like get_source_repo_map.",
+    )
     async def clone_repo(url: str, branch: str = None) -> dict:
-        """Clone a repository and start building its RepoMap."""
+        """
+        Clone a repository into MCP server's cache and prepare it for analysis.
+
+        This tool must be called before using analysis endpoints like get_source_repo_map
+        or get_repo_documentation. It copies the repository into MCP's cache and
+        automatically starts building a repository map in the background.
+
+        Args:
+            url (str): URL of remote repository or path to local repository to analyze
+            branch (str, optional): Specific branch to clone for analysis
+
+        Returns:
+            dict: Response with format:
+                {
+                    "status": "pending",
+                    "path": str,  # Cache location where repo is being cloned
+                    "message": str  # Status message about clone and analysis
+                }
+
+        Note:
+            - This is a setup operation for MCP analysis only
+            - Does not modify the source repository
+            - Repository map building starts automatically after clone completes
+            - Use get_source_repo_map to check analysis status and retrieve results
+        """
         try:
             logger.debug(f"[TRACE] clone_repo: Starting get_repository for {url}")
             repo = await repo_manager.get_repository(url)
@@ -123,7 +172,7 @@ def register_tools(
 
     @mcp_server.tool(
         name="get_source_repo_map",
-        description="For Building a repo map from the key source and config files",
+        description="Retrieve a semantic analysis map of the repository's source code structure, including file hierarchy, functions, classes, and their relationships. Repository must be previously cloned via clone_repo.",
     )
     async def get_source_repo_map(
         repo_path: str,
@@ -132,8 +181,38 @@ def register_tools(
         max_tokens: int = None,
     ) -> dict:
         """
-        Returns RepoMap's semantic analysis of specified files/directories.
-        Phase 1: Returns full RepoMap output with default metadata values.
+        Retrieve a semantic analysis map of the repository's code structure.
+
+        Returns a detailed map of the repository's structure, including file hierarchy,
+        code elements (functions, classes, methods), and their relationships. Can analyze
+        specific files/directories or the entire repository.
+
+        Args:
+            repo_path (str): Path or URL matching what was originally provided to clone_repo
+            files (List[str], optional): Specific files to analyze. If None, analyzes all files
+            directories (List[str], optional): Specific directories to analyze. If None, analyzes all directories
+            max_tokens (int, optional): Limit total tokens in analysis. Useful for large repositories
+
+        Returns:
+            dict: Response with format:
+                {
+                    "status": str,  # "success", "building", "waiting", or "error"
+                    "content": str,  # Hierarchical representation of code structure
+                    "metadata": {    # Analysis metadata
+                        "excluded_files_by_dir": dict,
+                        "is_complete": bool,
+                        "max_tokens": int
+                    },
+                    "message": str,  # Present for "building"/"waiting" status
+                    "error": str     # Present for "error" status
+                }
+
+        Note:
+            - Repository must be previously cloned using clone_repo
+            - Initial analysis happens in background after clone
+            - Returns "building" status while analysis is in progress
+            - Content includes file structure, code elements, and their relationships
+            - For large repos, consider using max_tokens or targeting specific directories
         """
         try:
             return await repo_map_builder.get_repo_map_content(
@@ -148,12 +227,35 @@ def register_tools(
 
     @mcp_server.tool(
         name="get_repo_documentation",
-        description="For retrieving documentation from the code repo, such as README files, User guides, design docs, etc.",
+        description="Retrieve and analyze documentation files from a repository, including README files, API docs, design documents, and other documentation. Repository must be previously cloned via clone_repo.",
     )
     async def get_repo_documentation(repo_path: str) -> dict:
         """
-        Retrieves documentation from the code repository.
-        Currently returns a stub response as the endpoint is under construction.
+        Retrieve and analyze repository documentation files.
+
+        Searches for and analyzes documentation within the repository, including:
+        - README files
+        - API documentation
+        - Design documents
+        - User guides
+        - Installation instructions
+        - Other documentation files
+
+        Args:
+            repo_path (str): Path or URL matching what was originally provided to clone_repo
+
+        Returns:
+            dict: Currently returns a stub response as feature is under development:
+                {
+                    "status": "pending",
+                    "message": str  # Information about feature status
+                }
+
+        Note:
+            - Repository must be previously cloned using clone_repo
+            - Will support various documentation formats (markdown, rst, etc.)
+            - Will provide structured access to repository documentation
+            - Currently under development
         """
         return {
             "status": "pending",

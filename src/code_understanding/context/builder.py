@@ -292,6 +292,50 @@ class RepoMapBuilder:
 
             return metadata.repo_map_status
 
+    async def filter_files_by_token_limit(
+        self, files: List[str], max_tokens: Optional[int]
+    ) -> Tuple[List[str], Dict[str, int]]:
+        """
+        Filter files to stay within token limit.
+
+        Args:
+            files: List of file paths to filter
+            max_tokens: Maximum total tokens allowed, or None for no limit
+
+        Returns:
+            Tuple of (filtered file list, dict of file token counts)
+        """
+        if not max_tokens:
+            return files, {}
+
+        # Sort files by size as initial proxy for token count
+        files_by_size = sorted(files, key=lambda f: os.path.getsize(f))
+
+        filtered_files = []
+        file_token_counts = {}
+        total_tokens = 0
+
+        for file in files_by_size:
+            try:
+                with open(file, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    tokens = self.model.token_count(content)
+
+                    # Skip files that would exceed the limit
+                    if total_tokens + tokens > max_tokens:
+                        continue
+
+                    total_tokens += tokens
+                    file_token_counts[file] = tokens
+                    filtered_files.append(file)
+            except Exception as e:
+                logger.warning(f"Failed to read {file}: {e}")
+
+        logger.debug(
+            f"Filtered {len(files)} files to {len(filtered_files)} within {max_tokens} token limit"
+        )
+        return filtered_files, file_token_counts
+
     async def get_repo_map_content(
         self,
         repo_path: str,
@@ -368,19 +412,15 @@ class RepoMapBuilder:
 
             logger.debug(f"Processing {len(target_files)} files")
 
-            # Calculate token counts
-            total_input_tokens = 0
-            file_token_counts = {}
-            for file in target_files:
-                try:
-                    with open(file, "r", encoding="utf-8") as f:
-                        content = f.read()
-                        tokens = self.model.token_count(content)
-                        total_input_tokens += tokens
-                        file_token_counts[file] = tokens
-                except Exception as e:
-                    logger.warning(f"Failed to read {file}: {e}")
+            # Pre-filter files based on token limit
+            target_files, file_token_counts = await self.filter_files_by_token_limit(
+                target_files, max_tokens
+            )
 
+            logger.debug(f"Filtered to {len(target_files)} files within token limit")
+
+            # Calculate total tokens for logging
+            total_input_tokens = sum(file_token_counts.values())
             logger.debug(f"Total input tokens: {total_input_tokens}")
 
             # Generate map and process results

@@ -47,10 +47,35 @@ def register_tools(
     """Register all MCP tools with the server."""
 
     @mcp_server.tool(
-        name="get_resource", description="Retrieve specific files or directory listings"
+        name="get_repo_file_content",
+        description="Retrieve file contents or directory listings from a repository. For files, returns the complete file content. For directories, returns a non-recursive listing of immediate files and subdirectories.",
     )
-    async def get_resource(repo_path: str, resource_path: str) -> dict:
-        """Retrieve specific files or directory listings."""
+    async def get_repo_file_content(repo_path: str, resource_path: str) -> dict:
+        """
+        Retrieve file contents or directory listings from a repository.
+
+        Args:
+            repo_path (str): Path or URL to the repository
+            resource_path (str): Path to the target file or directory within the repository
+
+        Returns:
+            dict: For files:
+                {
+                    "type": "file",
+                    "path": str,  # Relative path within repository
+                    "content": str  # Complete file contents
+                }
+                For directories:
+                {
+                    "type": "directory",
+                    "path": str,  # Relative path within repository
+                    "contents": List[str]  # List of immediate files and subdirectories
+                }
+
+        Note:
+            Directory listings are not recursive - they only show immediate contents.
+            To explore subdirectories, make additional calls with the subdirectory path.
+        """
         try:
             repo = await repo_manager.get_repository(repo_path)
             return await repo.get_resource(resource_path)
@@ -97,10 +122,10 @@ def register_tools(
             return error_response
 
     @mcp_server.tool(
-        name="get_context",
-        description="Returns RepoMap's semantic analysis of specified files/directories",
+        name="get_source_repo_map",
+        description="For Building a repo map from the key source and config files",
     )
-    async def get_context(
+    async def get_source_repo_map(
         repo_path: str,
         files: List[str] = None,
         directories: List[str] = None,
@@ -120,6 +145,20 @@ def register_tools(
                 "status": "error",
                 "error": f"Unexpected error while getting repository context: {str(e)}",
             }
+
+    @mcp_server.tool(
+        name="get_repo_documentation",
+        description="For retrieving documentation from the code repo, such as README files, User guides, design docs, etc.",
+    )
+    async def get_repo_documentation(repo_path: str) -> dict:
+        """
+        Retrieves documentation from the code repository.
+        Currently returns a stub response as the endpoint is under construction.
+        """
+        return {
+            "status": "pending",
+            "message": "This endpoint is under construction. Documentation retrieval will be implemented soon.",
+        }
 
 
 # Create server instance that can be imported by MCP CLI

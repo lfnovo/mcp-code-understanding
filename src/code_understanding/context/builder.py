@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Any
 from aider.io import InputOutput
 from aider.repomap import RepoMap
+from .extended_repo_map import UntruncatedRepoMap
 
 from ..repository.cache import RepositoryCache, RepositoryMetadata
 from .file_filter import FileFilter
@@ -118,10 +119,10 @@ class RepoMapBuilder:
             max_tokens: Maximum tokens for repo map output. Defaults to 1000000 if None.
 
         Returns:
-            Initialized RepoMap instance
+            Initialized UntruncatedRepoMap instance
         """
         logger.debug(f"Initializing RepoMap for {root_dir} (max_tokens={max_tokens})")
-        rm = RepoMap(
+        rm = UntruncatedRepoMap(
             root=root_dir,
             io=self.io,
             main_model=self.model,

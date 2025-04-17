@@ -19,9 +19,10 @@ dependencies = [
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.1.0",
     "pathspec>=0.12.1",
-    "aider-chat",  # Brings in all needed tree-sitter and parsing dependencies
+    "aider-chat==0.82.1",  # Brings in all needed tree-sitter and parsing dependencies
     "identify>=2.5.35",  # For reliable text file detection
-    "lizard>=1.17.24"
+    "lizard>=1.17.24",
+    "debugpy>=1.8.1"  # For VS Code debugging support
 ]
 
 [project.scripts]

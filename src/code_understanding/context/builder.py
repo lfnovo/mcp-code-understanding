@@ -133,7 +133,7 @@ class RepoMapBuilder:
 
     async def gather_files(self, root_dir: str) -> List[str]:
         """
-        Gather all source files in the repository.
+        Gather all source files in the repository that match our extension and text criteria.
 
         Args:
             root_dir: Repository root directory
@@ -141,9 +141,11 @@ class RepoMapBuilder:
         Returns:
             List of files to include in RepoMap
         """
-        file_filter = FileFilter()  # Create language-agnostic filter
+        file_filter = FileFilter()  # Create filter with extension-based inclusion
         files = file_filter.find_source_files(root_dir)
-        logger.debug(f"Found {len(files)} source files in {root_dir}")
+        logger.debug(
+            f"Found {len(files)} files matching extension and text criteria in {root_dir}"
+        )
         return files
 
     async def gather_files_targeted(
@@ -153,7 +155,8 @@ class RepoMapBuilder:
         directories: Optional[List[str]] = None,
     ) -> List[str]:
         """
-        Optimized file gathering that only scans specified directories or checks specific files.
+        Optimized file gathering that only checks specified directories or files.
+        Files must match our extension and text criteria to be included.
 
         Args:
             root_dir: Repository root directory
@@ -170,29 +173,15 @@ class RepoMapBuilder:
             # Direct file checking
             for file in files:
                 file_path = os.path.join(root_dir, file)
-                if os.path.exists(file_path) and not file_filter.should_ignore(file):
+                if os.path.exists(file_path) and file_filter.should_include(file_path):
                     target_files.append(file_path)
 
         if directories:
-            # Only scan specified directories
+            # Scan specified directories using our extension and text filtering
             for directory in directories:
                 dir_path = os.path.join(root_dir, directory)
                 if os.path.exists(dir_path) and os.path.isdir(dir_path):
-                    for dirpath, dirnames, filenames in os.walk(dir_path):
-                        # Remove ignored directories to prevent traversal
-                        dirnames[:] = [
-                            d
-                            for d in dirnames
-                            if not file_filter.should_ignore(
-                                os.path.relpath(os.path.join(dirpath, d), root_dir)
-                            )
-                        ]
-
-                        for filename in filenames:
-                            file_path = os.path.join(dirpath, filename)
-                            rel_path = os.path.relpath(file_path, root_dir)
-                            if not file_filter.should_ignore(rel_path):
-                                target_files.append(file_path)
+                    target_files.extend(file_filter.find_source_files(dir_path))
 
         target_files = list(dict.fromkeys(target_files))  # Remove duplicates
         logger.debug(

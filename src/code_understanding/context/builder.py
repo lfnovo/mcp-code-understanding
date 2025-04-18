@@ -402,6 +402,9 @@ class RepoMapBuilder:
 
             logger.debug(f"Processing {len(target_files)} files")
 
+            # Save complete list before filtering
+            all_target_files = target_files.copy()
+
             # Pre-filter files based on token limit
             target_files, file_token_counts = await self.filter_files_by_token_limit(
                 target_files, max_tokens
@@ -426,16 +429,23 @@ class RepoMapBuilder:
             # Process excluded files
             extractor = RepoMapExtractor()
             included_files = await extractor.extract_files(content)
-            relative_target_files = {
-                str(Path(f).relative_to(cache_path)) for f in target_files
+            normalized_included_files = {os.path.normpath(f) for f in included_files}
+
+            # Convert and normalize ALL original files for comparison
+            all_relative_target_files = {
+                os.path.normpath(str(Path(f).relative_to(cache_path)))
+                for f in all_target_files
             }
-            excluded_files = relative_target_files - included_files
+
+            # Compare against ALL files, not just filtered ones
+            excluded_files = all_relative_target_files - normalized_included_files
 
             if excluded_files:
                 excluded_tokens = sum(
                     file_token_counts.get(f, 0)
                     for f in target_files
-                    if str(Path(f).relative_to(cache_path)) in excluded_files
+                    if os.path.normpath(str(Path(f).relative_to(cache_path)))
+                    in excluded_files
                 )
                 logger.debug(
                     f"Excluded {len(excluded_files)} files ({excluded_tokens} tokens)"

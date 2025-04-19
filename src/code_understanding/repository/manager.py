@@ -182,15 +182,48 @@ class RepositoryManager:
             except Exception as e:
                 raise Exception(f"Failed to start repository clone: {e}")
 
-        # For local paths that aren't in cache, verify they exist
+        # For local paths that aren't in cache, start async copy
         if not is_git and not cache_path.exists():
             original_path = Path(path).resolve()
             if not original_path.exists():
                 raise FileNotFoundError(f"Repository not found: {path}")
-            # Local repository exists but isn't cached
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            # For now, just use the original path
-            cache_path = original_path
+
+            try:
+                # Ensure we can add another repo before starting copy
+                if not await self.cache.prepare_for_clone(str_path):
+                    raise Exception("Failed to prepare cache for clone")
+
+                # Start copy in background
+                asyncio.create_task(
+                    self._do_clone(str(original_path), str_path, is_local=True)
+                )
+
+                # Create temporary repository instance
+                repository = Repository(
+                    repo_id=str_path,
+                    root_path=cache_path,
+                    repo_type="local",
+                    is_git=False,
+                    url=path,
+                    manager=self,
+                )
+                self.repositories[str_path] = repository
+
+                # Initialize metadata with not_started status
+                with self.cache._file_lock():
+                    metadata_dict = self.cache._read_metadata()
+                    if str_path not in metadata_dict:
+                        metadata_dict[str_path] = RepositoryMetadata(
+                            path=str_path,
+                            url=path,
+                            last_access=datetime.now().isoformat(),
+                        )
+                    self.cache._write_metadata(metadata_dict)
+
+                return repository
+
+            except Exception as e:
+                raise Exception(f"Failed to start repository copy: {e}")
 
         # Update access time
         await self.cache.update_access(str(cache_path.resolve()))
@@ -224,22 +257,35 @@ class RepositoryManager:
 
         return repository
 
-    async def _do_clone(self, url: str, str_path: str, branch: Optional[str] = None):
-        """Internal method to perform the actual clone"""
+    async def _do_clone(
+        self,
+        url: str,
+        str_path: str,
+        branch: Optional[str] = None,
+        is_local: bool = False,
+    ):
+        """Internal method to perform the actual clone or copy"""
         cache_path = Path(str_path)
 
         try:
-            # Update status to cloning
+            # Update status to cloning/copying
+            status_msg = "copying" if is_local else "cloning"
             await self.cache.update_clone_status(
                 str_path,
-                {"status": "cloning", "started_at": datetime.now().isoformat()},
+                {"status": status_msg, "started_at": datetime.now().isoformat()},
             )
 
             # Create parent directories
             cache_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Perform clone in thread pool to not block event loop
-            await asyncio.to_thread(Repo.clone_from, url, cache_path, branch=branch)
+            if is_local:
+                # For local directories, use copytree
+                await asyncio.to_thread(
+                    shutil.copytree, url, cache_path, dirs_exist_ok=True
+                )
+            else:
+                # For Git repos, use clone_from
+                await asyncio.to_thread(Repo.clone_from, url, cache_path, branch=branch)
 
             # Update success status
             await self.cache.update_clone_status(
@@ -253,12 +299,14 @@ class RepositoryManager:
             # Import here to avoid circular dependency
             from ..context.builder import RepoMapBuilder
 
-            # Start RepoMap build now that clone is complete
+            # Start RepoMap build now that clone/copy is complete
             repo_map_builder = RepoMapBuilder(self.cache)
             await repo_map_builder.start_build(str_path)
 
         except Exception as e:
-            logger.error(f"Clone failed for {url}: {str(e)}")
+            logger.error(
+                f"{'Copy' if is_local else 'Clone'} failed for {url}: {str(e)}"
+            )
             # Update failure status
             await self.cache.update_clone_status(
                 str_path,
@@ -269,7 +317,7 @@ class RepositoryManager:
                 },
             )
 
-            # Cleanup failed clone
+            # Cleanup failed clone/copy
             if cache_path.exists():
                 shutil.rmtree(cache_path)
             if str_path in self.repositories:

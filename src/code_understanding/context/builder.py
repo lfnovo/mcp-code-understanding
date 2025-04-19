@@ -406,15 +406,14 @@ class RepoMapBuilder:
             all_target_files = target_files.copy()
 
             # Pre-filter files based on token limit
-            target_files, file_token_counts = await self.filter_files_by_token_limit(
-                target_files, max_tokens
-            )
+            # target_files, file_token_counts = await self.filter_files_by_token_limit(
+            #     target_files, max_tokens
+            # )
 
-            logger.debug(f"Filtered to {len(target_files)} files within token limit")
-
+            # logger.debug(f"Filtered to {len(target_files)} files within token limit")
             # Calculate total tokens for logging
-            total_input_tokens = sum(file_token_counts.values())
-            logger.debug(f"Total input tokens: {total_input_tokens}")
+            # total_input_tokens = sum(file_token_counts.values())
+            # logger.debug(f"Total input tokens: {total_input_tokens}")
 
             # Generate map and process results
             content = repo_map.get_ranked_tags_map([], target_files)
@@ -441,15 +440,16 @@ class RepoMapBuilder:
             excluded_files = all_relative_target_files - normalized_included_files
 
             if excluded_files:
-                excluded_tokens = sum(
-                    file_token_counts.get(f, 0)
-                    for f in target_files
-                    if os.path.normpath(str(Path(f).relative_to(cache_path)))
-                    in excluded_files
-                )
-                logger.debug(
-                    f"Excluded {len(excluded_files)} files ({excluded_tokens} tokens)"
-                )
+                # excluded_tokens = sum(
+                #     file_token_counts.get(f, 0)
+                #     for f in target_files
+                #     if os.path.normpath(str(Path(f).relative_to(cache_path)))
+                #     in excluded_files
+                # )
+                # logger.debug(
+                #     f"Excluded {len(excluded_files)} files ({excluded_tokens} tokens)"
+                # )
+                logger.debug(f"Excluded {len(excluded_files)} files")
 
             # Group excluded files by directory
             excluded_by_dir = {}
@@ -465,6 +465,7 @@ class RepoMapBuilder:
                     "excluded_files_by_dir": excluded_by_dir,
                     "is_complete": len(excluded_files) == 0,
                     "max_tokens": max_tokens,
+                    "output_tokens": output_tokens,
                 },
             }
         except Exception as e:

@@ -302,15 +302,19 @@ class RepoMapBuilder:
     async def get_repo_map_content(
         self,
         repo_path: str,
-        files: Optional[List[str]] = None,
-        directories: Optional[List[str]] = None,
-        max_tokens: Optional[int] = None,
+        files: List[str] = None,
+        directories: List[str] = None,
+        max_tokens: int = None,
+        max_files_threshold: int = None,
     ) -> Dict[str, Any]:
         """
         Get repository map content if build is complete.
         Returns appropriate status/error messages otherwise.
         Token limiting is handled by Aider's RepoMap based on max_tokens parameter.
+        Files exceeding max_files_threshold will return early with guidance.
         """
+        DEFAULT_FILES_THRESHOLD = 5000
+
         cache_path = str(get_cache_path(self.cache.cache_dir, repo_path).resolve())
         logger.debug(
             f"Getting repo map content for {repo_path} (max_tokens={max_tokens})"
@@ -367,10 +371,24 @@ class RepoMapBuilder:
                 )
             else:
                 # Fall back to full repository scan if no specific paths provided
-                all_files = await self.gather_files(cache_path)
-                target_files = all_files
+                target_files = await self.gather_files(cache_path)
 
             logger.debug(f"Processing {len(target_files)} files")
+
+            # Check against threshold before proceeding
+            file_count = len(target_files)
+            effective_threshold = max_files_threshold or DEFAULT_FILES_THRESHOLD
+            if file_count > effective_threshold:
+                return {
+                    "status": "threshold_exceeded",
+                    "message": "Number of matching files exceeds processing threshold",
+                    "metadata": {
+                        "matching_files": file_count,
+                        "threshold": effective_threshold,
+                        "size_context": f"Large repository ({file_count} matching files)",
+                        "override_guidance": "You have several options: 1) Use 'files' or 'directories' parameters to analyze a smaller subset of the codebase, 2) Increase max_files_threshold AND ensure your client timeout is sufficient",
+                    },
+                }
 
             # Save complete list before filtering
             all_target_files = target_files.copy()

@@ -108,6 +108,34 @@ class RepoMapBuilder:
         self.model = TiktokenModel()
         self.cache = cache
 
+    def _get_retry_guidance(self, file_count: int) -> Dict[str, Any]:
+        """
+        Get retry guidance based on file count.
+
+        Args:
+            file_count: Number of matching files
+
+        Returns:
+            Dictionary containing retry guidance with suggested wait time and context
+        """
+        if file_count < 100:
+            category = "tiny"
+            seconds = 5
+        elif file_count < 1000:
+            category = "small"
+            seconds = 15
+        elif file_count < 10000:
+            category = "medium"
+            seconds = 30
+        else:
+            category = "large"
+            seconds = 60
+
+        return {
+            "suggested_retry_seconds": seconds,
+            "size_context": f"{category.capitalize()} repository ({file_count} matching files), initial build in progress",
+        }
+
     async def initialize_repo_map(
         self, root_dir: str, max_tokens: Optional[int] = None
     ) -> RepoMap:
@@ -244,24 +272,13 @@ class RepoMapBuilder:
 
             metadata = metadata_dict[repo_path]
 
-            # Calculate rough estimate of completion time
-            # TODO: Implement more sophisticated estimation based on codebase size/complexity
-            total_size = 0
-            for root, _, files in os.walk(repo_path):
-                for file in files:
-                    try:
-                        total_size += os.path.getsize(os.path.join(root, file))
-                    except (OSError, IOError):
-                        continue
-
-            # Very rough estimate: 1 second per 100KB of code
-            estimated_seconds = max(1, total_size / (100 * 1024))
-            estimated_completion = time.time() + estimated_seconds
+            # Get matching files count for retry guidance
+            matching_files = len(await self.gather_files(repo_path))
 
             # Update build status
             metadata.repo_map_status = {
                 "status": "building",
-                "estimated_completion_at": estimated_completion,
+                "matching_files": matching_files,
                 "message": "Building repository map for AI analysis",
             }
             self.cache._write_metadata(metadata_dict)
@@ -313,12 +330,9 @@ class RepoMapBuilder:
                 return {
                     "status": "waiting",
                     "message": f"Repository clone is {clone_status['status'] if clone_status else 'not_started'}",
-                    "clone_status": clone_status
-                    or {
-                        "status": "not_started",
-                        "started_at": None,
-                        "completed_at": None,
-                        "error": None,
+                    "retry_guidance": {
+                        "suggested_retry_seconds": 30,  # Conservative default during clone
+                        "size_context": "Repository clone in progress, size unknown",
                     },
                 }
 
@@ -330,12 +344,11 @@ class RepoMapBuilder:
                 }
 
             if metadata.repo_map_status["status"] == "building":
+                matching_files = metadata.repo_map_status.get("matching_files", 0)
                 return {
                     "status": "building",
-                    "message": "Repository map is still being built",
-                    "estimated_completion_at": metadata.repo_map_status.get(
-                        "estimated_completion_at"
-                    ),
+                    "message": "Repository map is being built",
+                    "retry_guidance": self._get_retry_guidance(matching_files),
                 }
             elif metadata.repo_map_status["status"] != "complete":
                 return {

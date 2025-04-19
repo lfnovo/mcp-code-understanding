@@ -279,9 +279,16 @@ class RepositoryManager:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
 
             if is_local:
-                # For local directories, use copytree
+                # For local directories, use copytree with ignore function to exclude .git
+                def ignore_git(dir, files):
+                    return [".git"] if ".git" in files else []
+
                 await asyncio.to_thread(
-                    shutil.copytree, url, cache_path, dirs_exist_ok=True
+                    shutil.copytree,
+                    url,
+                    cache_path,
+                    dirs_exist_ok=True,
+                    ignore=ignore_git,
                 )
             else:
                 # For Git repos, use clone_from
@@ -356,10 +363,107 @@ class RepositoryManager:
     async def refresh_repository(self, path: str) -> Dict[str, Any]:
         """Refresh a repository with latest changes."""
         try:
-            repo = await self.get_repository(path)
-            return await repo.refresh()
+            # Get cache path and resolve it
+            cache_path = get_cache_path(self.cache_dir, path)
+            str_path = str(cache_path.resolve())
+
+            # Check repository exists in cache
+            with self.cache._file_lock():
+                metadata = self.cache._read_metadata()
+                if str_path not in metadata:
+                    return {"status": "error", "error": "Repository not found in cache"}
+
+                # Verify both statuses are complete
+                repo_metadata = metadata[str_path]
+                if (
+                    not repo_metadata.clone_status
+                    or repo_metadata.clone_status["status"] != "complete"
+                    or not repo_metadata.repo_map_status
+                    or repo_metadata.repo_map_status["status"] != "complete"
+                ):
+                    return {
+                        "status": "error",
+                        "error": "Cannot refresh repository - clone or repo map build is in progress",
+                    }
+
+            # Start refresh in background
+            asyncio.create_task(self._do_refresh(path, str_path))
+
+            return {
+                "status": "pending",
+                "path": str_path,
+                "message": "Refresh started in background",
+            }
+
         except Exception as e:
+            logger.error(f"Error initiating refresh: {str(e)}", exc_info=True)
             return {"status": "error", "error": str(e)}
+
+    async def _do_refresh(self, original_path: str, cache_path: str):
+        """Internal method to perform the actual refresh"""
+        try:
+            # Update status to refreshing
+            await self.cache.update_clone_status(
+                cache_path,  # Fixed: use string path directly, no str() needed
+                {"status": "refreshing", "started_at": datetime.now().isoformat()},
+            )
+
+            # Remove repo map status entirely
+            await self.cache.update_repo_map_status(
+                cache_path, None
+            )  # Ensure path is string
+
+            is_git = is_git_url(original_path)
+            if is_git:
+                # For Git repos, do git pull
+                repo = Repo(cache_path)
+                await asyncio.to_thread(repo.remotes.origin.pull)
+            else:
+                # For local dirs:
+                original_path = Path(original_path).resolve()
+                cache_path_obj = Path(cache_path)  # Rename to avoid confusion
+
+                # First remove everything in the cache directory
+                # No special handling for .git needed since we're copying a local dir
+                if cache_path_obj.exists():
+                    shutil.rmtree(cache_path_obj)
+
+                # Do a fresh copy, still excluding .git in case source has one
+                def ignore_git(dir, files):
+                    return [".git"] if ".git" in files else []
+
+                await asyncio.to_thread(
+                    shutil.copytree,
+                    original_path,
+                    cache_path_obj,
+                    dirs_exist_ok=False,  # Changed since we just removed the directory
+                    ignore=ignore_git,
+                )
+
+            # Update success status
+            await self.cache.update_clone_status(
+                cache_path,  # Fixed: use string path directly, no str() needed
+                {"status": "complete", "completed_at": datetime.now().isoformat()},
+            )
+
+            # Start repo map build
+            from ..context.builder import RepoMapBuilder
+
+            repo_map_builder = RepoMapBuilder(self.cache)
+            await repo_map_builder.start_build(str(cache_path))  # Ensure path is string
+
+        except Exception as e:
+            logger.error(f"Refresh failed for {original_path}: {str(e)}")
+            # Update failure status
+            await self.cache.update_clone_status(
+                cache_path,  # Fixed: use string path directly, no str() needed
+                {
+                    "status": "failed",
+                    "error": str(e),
+                    "completed_at": datetime.now().isoformat(),
+                },
+            )
+            raise
 
     async def cleanup(self):
         """Cleanup all repositories on server shutdown."""

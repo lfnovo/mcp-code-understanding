@@ -138,7 +138,10 @@ class RepoMapBuilder:
         }
 
     async def initialize_repo_map(
-        self, root_dir: str, max_tokens: Optional[int] = None
+        self,
+        root_dir: str,
+        max_tokens: Optional[int] = None,
+        is_full_build: bool = False,  # New parameter to indicate if this is a full build
     ) -> RepoMap:
         """
         Initialize RepoMap following core patterns from test_repo_map_simple.py.
@@ -146,17 +149,22 @@ class RepoMapBuilder:
         Args:
             root_dir: Repository root directory
             max_tokens: Maximum tokens for repo map output. Defaults to 1000000 if None.
+            is_full_build: Whether this is a full build operation (initial or post-refresh)
 
         Returns:
             Initialized UntruncatedRepoMap instance
         """
-        logger.debug(f"Initializing RepoMap for {root_dir} (max_tokens={max_tokens})")
+        logger.debug(
+            f"Initializing RepoMap for {root_dir} (max_tokens={max_tokens}, refresh={'always' if is_full_build else 'files'})"
+        )
         rm = UntruncatedRepoMap(
             root=root_dir,
             io=self.io,
             main_model=self.model,
             map_tokens=max_tokens if max_tokens is not None else 1000000,
-            refresh="files",
+            refresh=(
+                "always" if is_full_build else "files"
+            ),  # Set based on operation type
             max_context_window=max_tokens if max_tokens is not None else 1000000,
         )
         return rm
@@ -164,6 +172,7 @@ class RepoMapBuilder:
     async def gather_files(self, root_dir: str) -> List[str]:
         """
         Gather all source files in the repository that match our extension and text criteria.
+        Always performs a fresh scan of the directory.
 
         Args:
             root_dir: Repository root directory
@@ -171,12 +180,12 @@ class RepoMapBuilder:
         Returns:
             List of files to include in RepoMap
         """
-        file_filter = FileFilter()  # Create filter with extension-based inclusion
-        files = file_filter.find_source_files(root_dir)
+        file_filter = FileFilter()  # Create new filter instance each time
+        files = file_filter.find_source_files(root_dir)  # This does a fresh scan
         logger.debug(
             f"Found {len(files)} files matching extension and text criteria in {root_dir}"
         )
-        return files
+        return sorted(files)  # Sort for consistent ordering
 
     async def gather_files_targeted(
         self,
@@ -225,7 +234,9 @@ class RepoMapBuilder:
         """
         try:
             logger.debug(f"Starting RepoMap build for {repo_path}")
-            repo_map = await self.initialize_repo_map(repo_path)
+            repo_map = await self.initialize_repo_map(
+                repo_path, is_full_build=True
+            )  # This is a full build
             files = await self.gather_files(repo_path)
 
             # Run CPU-intensive RepoMap generation in a thread pool

@@ -100,8 +100,10 @@ def register_tools(
         """
         Update a previously cloned repository in MCP's cache and refresh its analysis.
 
-        For Git repositories, performs a git pull to get latest changes. Then triggers
-        a new repository map build to ensure all analysis is based on the updated code.
+        For Git repositories, performs a git pull to get latest changes.
+        For local directories, copies the latest content from the source.
+        Then triggers a new repository map build to ensure all analysis is based on
+        the updated code.
 
         Args:
             repo_path (str): Path or URL matching what was originally provided to clone_repo
@@ -109,16 +111,17 @@ def register_tools(
         Returns:
             dict: Response with format:
                 {
-                    "status": str,  # "success", "error", or "not_git_repo"
-                    "commit": str,  # (On success) Hash of the latest commit
+                    "status": str,  # "pending", "error"
+                    "path": str,    # (On pending) Cache location being refreshed
+                    "message": str, # (On pending) Status message
                     "error": str    # (On error) Error message
                 }
 
         Note:
-            - This is a setup operation for MCP analysis only
+            - Repository must be previously cloned and have completed initial analysis
             - Updates MCP's cached copy, does not modify the source repository
             - Automatically triggers rebuild of repository map with updated files
-            - For non-Git repositories, returns {"status": "not_git_repo"}
+            - Operation runs in background, check get_repo_map_content for status
         """
         try:
             return await repo_manager.refresh_repository(repo_path)

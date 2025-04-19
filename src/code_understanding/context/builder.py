@@ -6,6 +6,7 @@ Following test_repo_map_simple.py's core RepoMap interaction patterns.
 import asyncio
 import os
 import time
+from datetime import datetime
 import logging
 import tiktoken
 from pathlib import Path
@@ -239,7 +240,10 @@ class RepoMapBuilder:
                     raise ValueError(f"Repository {repo_path} not found in cache")
 
                 metadata = metadata_dict[repo_path]
-                status = {"status": "complete", "completed_at": time.time()}
+                status = {
+                    "status": "complete",
+                    "completed_at": datetime.now().isoformat(),
+                }
                 metadata.repo_map_status = status
                 self.cache._write_metadata(metadata_dict)
 
@@ -253,7 +257,7 @@ class RepoMapBuilder:
                 metadata = metadata_dict[repo_path]
                 status = {
                     "status": "failed",
-                    "completed_at": time.time(),
+                    "completed_at": datetime.now().isoformat(),
                     "error": str(e),
                 }
                 metadata.repo_map_status = status

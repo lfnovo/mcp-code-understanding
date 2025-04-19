@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Optional, Any, Set
 from dataclasses import dataclass
 import time
+from datetime import datetime
 import shutil
 import os
 import json
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 class RepositoryMetadata:
     path: str
     url: Optional[str]
-    last_access: float
+    last_access: str  # Changed from float to str for ISO format
     clone_status: Dict[str, Any] = None
     repo_map_status: Optional[Dict[str, Any]] = None
 
@@ -118,7 +119,7 @@ class RepositoryCache:
             metadata[path] = RepositoryMetadata(
                 path=path,
                 url=info.get("url"),
-                last_access=info.get("last_access", 0),
+                last_access=info.get("last_access", ""),
                 clone_status=info.get("clone_status"),
                 repo_map_status=info.get("repo_map_status"),
             )
@@ -138,7 +139,7 @@ class RepositoryCache:
         for path in actual_repos:
             if path not in metadata:
                 metadata[path] = RepositoryMetadata(
-                    path=path, url=None, last_access=time.time()
+                    path=path, url=None, last_access=datetime.now().isoformat()
                 )
 
         self._write_metadata(metadata)
@@ -158,7 +159,10 @@ class RepositoryCache:
 
             # If we're at limit, cleanup oldest
             if len(metadata) >= self.max_cached_repos:
-                sorted_repos = sorted(metadata.items(), key=lambda x: x[1].last_access)
+                sorted_repos = sorted(
+                    metadata.items(),
+                    key=lambda x: datetime.fromisoformat(x[1].last_access),
+                )
 
                 # Remove oldest repo
                 oldest_path, _ = sorted_repos[0]
@@ -181,11 +185,14 @@ class RepositoryCache:
             if path in metadata:
                 # Update existing metadata
                 metadata[path].url = url
-                metadata[path].last_access = time.time()
+                metadata[path].last_access = datetime.now().isoformat()
             else:
                 # Create new metadata only if it doesn't exist
                 metadata[path] = RepositoryMetadata(
-                    path=path, url=url, last_access=time.time(), repo_map_status=None
+                    path=path,
+                    url=url,
+                    last_access=datetime.now().isoformat(),
+                    repo_map_status=None,
                 )
             self._write_metadata(metadata)
 
@@ -194,7 +201,7 @@ class RepositoryCache:
         with self._file_lock():
             metadata = self._sync_metadata()
             if path in metadata:
-                metadata[path].last_access = time.time()
+                metadata[path].last_access = datetime.now().isoformat()
                 self._write_metadata(metadata)
 
     async def remove_repo(self, path: str):
@@ -221,7 +228,9 @@ class RepositoryCache:
                 return
 
             # Sort by last access time
-            sorted_repos = sorted(metadata.items(), key=lambda x: x[1].last_access)
+            sorted_repos = sorted(
+                metadata.items(), key=lambda x: datetime.fromisoformat(x[1].last_access)
+            )
 
             # Remove oldest until under limit
             while len(metadata) > self.max_cached_repos:
@@ -242,7 +251,7 @@ class RepositoryCache:
             metadata = self._read_metadata()
             if path not in metadata:
                 metadata[path] = RepositoryMetadata(
-                    path=path, url=None, last_access=time.time()
+                    path=path, url=None, last_access=datetime.now().isoformat()
                 )
             metadata[path].clone_status = status
             self._write_metadata(metadata)
@@ -253,7 +262,7 @@ class RepositoryCache:
             metadata = self._read_metadata()
             if path not in metadata:
                 metadata[path] = RepositoryMetadata(
-                    path=path, url=None, last_access=time.time()
+                    path=path, url=None, last_access=datetime.now().isoformat()
                 )
             metadata[path].repo_map_status = status
             self._write_metadata(metadata)

@@ -6,6 +6,7 @@ import asyncio
 from pathlib import Path
 from typing import Dict, Optional, Any, Union
 import time
+from datetime import datetime
 import shutil
 import logging
 
@@ -172,7 +173,7 @@ class RepositoryManager:
                         metadata_dict[str_path] = RepositoryMetadata(
                             path=str_path,
                             url=path,
-                            last_access=time.time(),
+                            last_access=datetime.now().isoformat(),
                         )
                     self.cache._write_metadata(metadata_dict)
 
@@ -230,7 +231,8 @@ class RepositoryManager:
         try:
             # Update status to cloning
             await self.cache.update_clone_status(
-                str_path, {"status": "cloning", "started_at": time.time()}
+                str_path,
+                {"status": "cloning", "started_at": datetime.now().isoformat()},
             )
 
             # Create parent directories
@@ -241,7 +243,8 @@ class RepositoryManager:
 
             # Update success status
             await self.cache.update_clone_status(
-                str_path, {"status": "complete", "completed_at": time.time()}
+                str_path,
+                {"status": "complete", "completed_at": datetime.now().isoformat()},
             )
 
             # Register the repo in cache
@@ -259,7 +262,11 @@ class RepositoryManager:
             # Update failure status
             await self.cache.update_clone_status(
                 str_path,
-                {"status": "failed", "error": str(e), "completed_at": time.time()},
+                {
+                    "status": "failed",
+                    "error": str(e),
+                    "completed_at": datetime.now().isoformat(),
+                },
             )
 
             # Cleanup failed clone

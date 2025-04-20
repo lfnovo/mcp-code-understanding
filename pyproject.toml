@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
+requires = ["setuptools>=45", "wheel", "build"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -23,6 +23,14 @@ dependencies = [
     "identify>=2.5.35",  # For reliable text file detection
     "lizard>=1.17.24",
     "debugpy>=1.8.1"  # For VS Code debugging support
+]
+
+[project.optional-dependencies]
+dev = [
+    "build",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0"
 ]
 
 [project.scripts]

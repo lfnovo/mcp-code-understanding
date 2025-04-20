@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import List, Optional
 import yaml
 import os
+import logging
+import platform
 
 
 @dataclass
@@ -97,36 +99,87 @@ class ServerConfig:
             self.treesitter = TreeSitterConfig()
 
 
-def load_config(config_path: str = "config.yaml") -> ServerConfig:
+def get_config_search_paths() -> List[str]:
+    """Get list of paths to search for config file."""
+    # Start with current directory
+    paths = ["./config.yaml"]
+
+    # Add XDG config directory
+    xdg_config_home = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    paths.append(os.path.join(xdg_config_home, "mcp-code-understanding", "config.yaml"))
+
+    # Add system-wide config
+    if platform.system().lower() == "darwin":  # macOS
+        paths.append("/Library/Application Support/mcp-code-understanding/config.yaml")
+    elif platform.system().lower() == "linux":
+        paths.append("/etc/mcp-code-understanding/config.yaml")
+
+    return paths
+
+
+def load_config(config_path: str = None) -> ServerConfig:
     """Load configuration from YAML file."""
-    if not os.path.exists(config_path):
-        return ServerConfig()
+    logger = logging.getLogger(__name__)
 
-    with open(config_path, "r") as f:
-        config_data = yaml.safe_load(f)
+    # If config_path is explicitly provided, only try that one
+    if config_path:
+        search_paths = [config_path]
+    else:
+        search_paths = get_config_search_paths()
 
-    if not config_data:
-        return ServerConfig()
+    # Try each path in order
+    for path in search_paths:
+        abs_path = os.path.abspath(path)
+        if os.path.exists(abs_path):
+            logger.info(f"Loading configuration from {abs_path}")
+            with open(abs_path, "r") as f:
+                config_data = yaml.safe_load(f)
 
-    # Convert nested dictionaries to appropriate config objects
-    if "repository" in config_data and isinstance(config_data["repository"], dict):
-        github_config = None
-        if "github" in config_data["repository"]:
-            github_config = GitHubConfig(**config_data["repository"].pop("github"))
-        config_data["repository"] = RepositoryConfig(
-            **config_data["repository"], github=github_config
-        )
+            if not config_data:
+                logger.warning(f"Config file {abs_path} is empty, trying next location")
+                continue
 
-    if "context" in config_data and isinstance(config_data["context"], dict):
-        config_data["context"] = ContextConfig(**config_data["context"])
+            logger.debug(f"Loaded configuration data: {config_data}")
 
-    if "parser" in config_data and isinstance(config_data["parser"], dict):
-        config_data["parser"] = ParserConfig(**config_data["parser"])
+            # Convert nested dictionaries to appropriate config objects
+            if "repository" in config_data and isinstance(
+                config_data["repository"], dict
+            ):
+                github_config = None
+                if "github" in config_data["repository"]:
+                    github_config = GitHubConfig(
+                        **config_data["repository"].pop("github")
+                    )
+                config_data["repository"] = RepositoryConfig(
+                    **config_data["repository"], github=github_config
+                )
+                logger.debug(
+                    f"Configured repository cache_dir: {config_data['repository'].cache_dir}"
+                )
 
-    if "indexer" in config_data and isinstance(config_data["indexer"], dict):
-        config_data["indexer"] = IndexerConfig(**config_data["indexer"])
+            if "context" in config_data and isinstance(config_data["context"], dict):
+                config_data["context"] = ContextConfig(**config_data["context"])
 
-    if "treesitter" in config_data and isinstance(config_data["treesitter"], dict):
-        config_data["treesitter"] = TreeSitterConfig(**config_data["treesitter"])
+            if "parser" in config_data and isinstance(config_data["parser"], dict):
+                config_data["parser"] = ParserConfig(**config_data["parser"])
 
-    return ServerConfig(**config_data)
+            if "indexer" in config_data and isinstance(config_data["indexer"], dict):
+                config_data["indexer"] = IndexerConfig(**config_data["indexer"])
+
+            if "treesitter" in config_data and isinstance(
+                config_data["treesitter"], dict
+            ):
+                config_data["treesitter"] = TreeSitterConfig(
+                    **config_data["treesitter"]
+                )
+
+            return ServerConfig(**config_data)
+        else:
+            logger.debug(f"No config file found at {abs_path}")
+
+    # If we get here, no config file was found
+    logger.warning(
+        f"No config file found in any of these locations: {', '.join(search_paths)}"
+    )
+    logger.warning("Using default configuration")
+    return ServerConfig()

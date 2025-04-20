@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 import shutil
 import logging
+import os
 
 import git
 from git.repo import Repo
@@ -114,7 +115,8 @@ class Repository:
 class RepositoryManager:
     def __init__(self, config: RepositoryConfig):
         self.config = config
-        self.cache_dir = Path(config.cache_dir)
+        # Expand ~ in cache_dir path
+        self.cache_dir = Path(os.path.expanduser(config.cache_dir))
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.repositories: Dict[str, Repository] = {}
         self.cache = RepositoryCache(self.cache_dir, config.max_cached_repos)

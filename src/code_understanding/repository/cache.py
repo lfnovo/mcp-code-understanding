@@ -13,6 +13,7 @@ import json
 import logging
 import fcntl
 from contextlib import contextmanager
+from filelock import FileLock
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,8 @@ class RepositoryCache:
     def __init__(
         self, cache_dir: Path, max_cached_repos: int = 50, cleanup_interval: int = 86400
     ):
-        self.cache_dir = Path(cache_dir)
+        # Expand ~ in cache_dir path
+        self.cache_dir = Path(os.path.expanduser(str(cache_dir)))
         self.max_cached_repos = max_cached_repos
         self.cleanup_interval = cleanup_interval
         self.metadata_file = self.cache_dir / "metadata.json"

@@ -36,7 +36,7 @@ def create_mcp_server(config: ServerConfig = None) -> FastMCP:
     if config is None:
         config = load_config()
 
-    server = FastMCP(name=config.name, host=config.host, port=config.port)
+    server = FastMCP(name=config.name)
 
     # Initialize core components
     repo_manager = RepositoryManager(config.repository)

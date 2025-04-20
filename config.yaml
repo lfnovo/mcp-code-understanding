@@ -1,10 +1,8 @@
 name: "Code Understanding Server"
 log_level: "debug"
-host: "localhost"
-port: 8080
 
 repository:
-  cache_dir: "./repo_cache"
+  cache_dir: "~/.cache/mcp-code-understanding"
   refresh_interval: 3600 # seconds
   max_cached_repos: 2
   github:

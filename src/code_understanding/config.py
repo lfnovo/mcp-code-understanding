@@ -9,6 +9,9 @@ import yaml
 import os
 import logging
 import platform
+import shutil
+import importlib.resources
+from platformdirs import user_config_dir
 
 
 @dataclass
@@ -99,27 +102,68 @@ class ServerConfig:
             self.treesitter = TreeSitterConfig()
 
 
+def ensure_default_config() -> None:
+    """Ensure default config exists in the standard .config directory."""
+    logger = logging.getLogger(__name__)
+    
+    # Use ~/.config/mcp-code-understanding for both Linux and macOS
+    config_dir = Path.home() / ".config" / "mcp-code-understanding"
+    config_path = config_dir / "config.yaml"
+    
+    if not config_path.exists():
+        # Create parent directories if they don't exist
+        config_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Copy default config from package
+        try:
+            # Try to find the config file relative to this file
+            current_dir = Path(__file__).resolve().parent
+            default_config_path = current_dir / "config" / "config.yaml"
+            
+            if default_config_path.exists():
+                with open(default_config_path, 'r') as src:
+                    default_config = src.read()
+                    with open(config_path, 'w') as dst:
+                        dst.write(default_config)
+                logger.info(f"Created default configuration at {config_path}")
+            else:
+                logger.error(f"Could not find default config at {default_config_path}")
+                raise FileNotFoundError(f"Default config not found at {default_config_path}")
+        except Exception as e:
+            logger.error(f"Failed to create default config: {e}")
+            raise
+
+
 def get_config_search_paths() -> List[str]:
     """Get list of paths to search for config file."""
-    # Start with current directory
-    paths = ["./config.yaml"]
-
-    # Add XDG config directory
-    xdg_config_home = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
-    paths.append(os.path.join(xdg_config_home, "mcp-code-understanding", "config.yaml"))
-
-    # Add system-wide config
-    if platform.system().lower() == "darwin":  # macOS
-        paths.append("/Library/Application Support/mcp-code-understanding/config.yaml")
-    elif platform.system().lower() == "linux":
-        paths.append("/etc/mcp-code-understanding/config.yaml")
-
+    paths = []
+    
+    # Check if we're running from an installed package or in development mode
+    # If __file__ is in a site-packages directory, we're running from an installed package
+    if "site-packages" in __file__:
+        # Installed mode - check standard location first
+        config_dir = Path.home() / ".config" / "mcp-code-understanding"
+        paths.append(str(config_dir / "config.yaml"))
+        
+        # Fallback to current directory only for backward compatibility
+        paths.append("./config.yaml")
+    else:
+        # Development mode - check current directory first
+        paths.append("./config.yaml")
+        
+        # Then check standard location
+        config_dir = Path.home() / ".config" / "mcp-code-understanding"
+        paths.append(str(config_dir / "config.yaml"))
+    
     return paths
 
 
 def load_config(config_path: str = None) -> ServerConfig:
     """Load configuration from YAML file."""
     logger = logging.getLogger(__name__)
+
+    # Always ensure default config exists first
+    ensure_default_config()
 
     # If config_path is explicitly provided, only try that one
     if config_path:
@@ -142,20 +186,11 @@ def load_config(config_path: str = None) -> ServerConfig:
             logger.debug(f"Loaded configuration data: {config_data}")
 
             # Convert nested dictionaries to appropriate config objects
-            if "repository" in config_data and isinstance(
-                config_data["repository"], dict
-            ):
+            if "repository" in config_data and isinstance(config_data["repository"], dict):
                 github_config = None
                 if "github" in config_data["repository"]:
-                    github_config = GitHubConfig(
-                        **config_data["repository"].pop("github")
-                    )
-                config_data["repository"] = RepositoryConfig(
-                    **config_data["repository"], github=github_config
-                )
-                logger.debug(
-                    f"Configured repository cache_dir: {config_data['repository'].cache_dir}"
-                )
+                    github_config = GitHubConfig(**config_data["repository"].pop("github"))
+                config_data["repository"] = RepositoryConfig(**config_data["repository"], github=github_config)
 
             if "context" in config_data and isinstance(config_data["context"], dict):
                 config_data["context"] = ContextConfig(**config_data["context"])
@@ -166,20 +201,11 @@ def load_config(config_path: str = None) -> ServerConfig:
             if "indexer" in config_data and isinstance(config_data["indexer"], dict):
                 config_data["indexer"] = IndexerConfig(**config_data["indexer"])
 
-            if "treesitter" in config_data and isinstance(
-                config_data["treesitter"], dict
-            ):
-                config_data["treesitter"] = TreeSitterConfig(
-                    **config_data["treesitter"]
-                )
+            if "treesitter" in config_data and isinstance(config_data["treesitter"], dict):
+                config_data["treesitter"] = TreeSitterConfig(**config_data["treesitter"])
 
             return ServerConfig(**config_data)
-        else:
-            logger.debug(f"No config file found at {abs_path}")
 
-    # If we get here, no config file was found
-    logger.warning(
-        f"No config file found in any of these locations: {', '.join(search_paths)}"
-    )
-    logger.warning("Using default configuration")
+    # If we get here, something went wrong with creating/reading the config
+    logger.error(f"Failed to load or create config in: {', '.join(search_paths)}")
     return ServerConfig()

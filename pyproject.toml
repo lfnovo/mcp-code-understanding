@@ -22,7 +22,8 @@ dependencies = [
     "aider-chat==0.82.1",  # Brings in all needed tree-sitter and parsing dependencies
     "identify>=2.5.35",  # For reliable text file detection
     "lizard>=1.17.24",
-    "debugpy>=1.8.1"  # For VS Code debugging support
+    "debugpy>=1.8.1",  # For VS Code debugging support
+    "platformdirs>=4.2.0"
 ]
 
 [project.optional-dependencies]
@@ -40,6 +41,9 @@ mcp-code-understanding = "code_understanding.mcp.server.app:main"
 where = ["src"]
 include = ["code_understanding*"]
 namespaces = true
+
+[tool.setuptools.package-data]
+code_understanding = ["config/*.yaml"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

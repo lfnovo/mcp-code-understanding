@@ -21,6 +21,10 @@ class IndexerConfig:
     embeddings_model: str = "all-MiniLM-L6-v2"
     vector_db_path: str = "./vector_db"
 
+    def __post_init__(self):
+        # Expand ~ to home directory in vector_db_path
+        self.vector_db_path = os.path.expanduser(self.vector_db_path)
+
 
 @dataclass
 class TreeSitterConfig:
@@ -53,6 +57,8 @@ class RepositoryConfig:
     def __post_init__(self):
         if self.github is None:
             self.github = GitHubConfig()
+        # Expand ~ to home directory in cache_dir
+        self.cache_dir = os.path.expanduser(self.cache_dir)
 
 
 @dataclass

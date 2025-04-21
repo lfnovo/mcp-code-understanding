@@ -52,10 +52,50 @@ class TiktokenModel:
 
 
 class MinimalIO(InputOutput):
-    """Minimal IO implementation from test_repo_map_simple.py."""
+    """Minimal IO implementation that prevents any stdout writes."""
 
     def __init__(self):
-        super().__init__()
+        super().__init__(pretty=False)
+
+    def tool_output(self, text, **kwargs):
+        """Override to prevent tool output to stdout"""
+        pass
+
+    def tool_error(self, text, **kwargs):
+        """Override to prevent error output to stdout"""
+        pass
+
+    def prompt_for_input(self, prompt, **kwargs):
+        """Override to prevent input prompts"""
+        pass
+
+    def prompt_for_yesno(self, prompt, default=None, **kwargs):
+        """Override to prevent yes/no prompts"""
+        return True
+
+    def get_input(self, **kwargs):
+        """Override to prevent input requests"""
+        return ""
+
+    def show_tool_output_command(self, command, output, returncode, **kwargs):
+        """Override to prevent command output display"""
+        pass
+
+    def show_tool_error(self, command, output, returncode, **kwargs):
+        """Override to prevent error display"""
+        pass
+
+    def info_message(self, msg, **kwargs):
+        """Override to prevent info messages"""
+        pass
+
+    def warning_message(self, msg, **kwargs):
+        """Override to prevent warning messages"""
+        pass
+
+    def error_message(self, msg, **kwargs):
+        """Override to prevent error messages"""
+        pass
 
 
 class SubprocessManager:
@@ -411,9 +451,9 @@ class RepoMapBuilder:
             # Generate map and process results
             content = repo_map.get_ranked_tags_map([], target_files)
 
-            # Dump raw content to file for debugging
-            with open("raw_repomap_output.txt", "w", encoding="utf-8") as f:
-                f.write(content)
+            # Debug output - commented out to avoid file system issues
+            # with open("raw_repomap_output.txt", "w", encoding="utf-8") as f:
+            #     f.write(str(repo_map))
 
             output_tokens = self.model.token_count(content)
             logger.debug(f"Generated map size: {output_tokens} tokens")

@@ -139,7 +139,7 @@ class RepositoryManager:
                     shutil.rmtree(repo.root_path)
                 del self.repositories[repo_id]
             except Exception as e:
-                print(f"Error removing repository {repo_id}: {e}")
+                logger.error(f"Error cleaning up repository {repo_id}: {e}")
 
     async def get_repository(self, path: str) -> Repository:
         """Get or create a Repository instance for the given path."""
@@ -475,4 +475,4 @@ class RepositoryManager:
                     shutil.rmtree(repo.root_path)
                 del self.repositories[repo_id]
             except Exception as e:
-                print(f"Error cleaning up repository {repo_id}: {e}")
+                logger.error(f"Error cleaning up repository {repo_id}: {e}")

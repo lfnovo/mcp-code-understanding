@@ -43,7 +43,11 @@ include = ["code_understanding*"]
 namespaces = true
 
 [tool.setuptools.package-data]
-code_understanding = ["config/*.yaml"]
+code_understanding = [
+    "config/*.yaml",
+    "resources/*",
+    "resources/*.txt"
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

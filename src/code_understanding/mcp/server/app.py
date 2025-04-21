@@ -184,7 +184,38 @@ def register_tools(
 
     @mcp_server.tool(
         name="get_source_repo_map",
-        description="Retrieve a semantic analysis map of the repository's source code structure, including file hierarchy, functions, classes, and their relationships. Repository must be previously cloned via clone_repo.",
+        description="""Retrieve a semantic analysis map of the repository's source code structure, including file hierarchy, functions, classes, and their relationships. Repository must be previously cloned via clone_repo.
+
+        RESPONSE CHARACTERISTICS:
+        1. Status Types:
+        - "threshold_exceeded": Indicates analysis scope exceeds processing limits
+        - "building": Analysis in progress
+        - "waiting": Waiting for prerequisite operation
+        - "success": Analysis complete
+        - "error": Operation failed
+
+        2. Resource Management:
+        - Repository size impacts processing time and token usage
+        - 'max_tokens' parameter provides approximate control of response size
+            Note: Actual token count may vary slightly above or below specified limit
+        - File count threshold exists to prevent overload
+        - Processing time scales with both file count and max_tokens
+            Important: Clients should adjust their timeout values proportionally when:
+            * Analyzing larger numbers of files
+            * Specifying higher max_tokens values
+            * Working with complex repositories
+
+        3. Scope Control Options:
+        - 'files': Analyze specific files (useful for targeted analysis)
+        - 'directories': Analyze specific directories
+        - Both parameters support gradual exploration of large codebases
+
+        4. Response Metadata:
+        - Contains processing statistics and limitation details
+        - Provides override_guidance when thresholds are exceeded
+        - Reports excluded files and completion status
+
+        NOTE: This tool supports both broad and focused analysis strategies. Response handling can be adapted based on specific use case requirements and user preferences.""",
     )
     async def get_source_repo_map(
         repo_path: str,

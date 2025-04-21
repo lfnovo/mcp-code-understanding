@@ -2,7 +2,7 @@ name: "Code Understanding Server"
 log_level: "debug"
 
 repository:
-  cache_dir: "~/.cache/mcp-code-understanding"
+  cache_dir: "./repo_cache"
   refresh_interval: 3600 # seconds
   max_cached_repos: 2
   github:

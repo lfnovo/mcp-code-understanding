@@ -497,3 +497,91 @@ class RepoMapBuilder:
                 "status": "error",
                 "error": f"Failed to generate repository map: {str(e)}",
             }
+
+    async def get_repo_structure(
+        self,
+        repo_path: str,
+        directories: List[str] = None,
+        include_files: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Get repository structure information with optional file listings.
+        
+        Args:
+            repo_path: Path/URL matching what was provided to clone_repo
+            directories: Optional list of directories to limit results to
+            include_files: Whether to include list of files in response
+        
+        Returns:
+            dict: Repository structure information with format:
+                {
+                    "status": str,
+                    "message": str, # (for error/waiting only)
+                    "directories": [{
+                        "path": str,
+                        "analyzable_files": int,
+                        "extensions": {
+                            "py": 10,
+                            "java": 5,
+                            "ts": 3
+                        },
+                        "files": [str]  # Only present if include_files=True
+                    }],
+                    "total_analyzable_files": int
+                }
+        """
+        # Convert repo_path to absolute cache path
+        cache_path = str(get_cache_path(self.cache.cache_dir, repo_path).resolve())
+        logger.debug(f"Getting repo structure for {repo_path}")
+        
+        # Check repository status, similar to get_repo_map_content but only checking clone status
+        with self.cache._file_lock():
+            metadata_dict = self.cache._read_metadata()
+            if cache_path not in metadata_dict:
+                return {"status": "error", "error": "Repository not found in cache"}
+            
+            metadata = metadata_dict[cache_path]
+            
+            # Check clone status only - unlike get_repo_map_content, we don't need to wait 
+            # for repo map build to complete
+            clone_status = metadata.clone_status
+            if not clone_status or clone_status["status"] != "complete":
+                return {
+                    "status": "waiting",
+                    "message": f"Repository clone is {clone_status['status'] if clone_status else 'not_started'}",
+                }
+        
+        # TODO: Implement Directory Scanning Setup (to-do #2)
+        # TODO: Implement File Analysis (to-do #3)
+        # TODO: Implement Optional File Listing (to-do #4)
+        # TODO: Implement Response Building (to-do #5)
+        
+        # Temporary dummy response while we implement the rest of the functionality
+        return {
+            "status": "success",
+            "directories": [
+                {
+                    "path": "src/main/java/org/core",
+                    "analyzable_files": 45,
+                    "extensions": {
+                        "java": 45
+                    }
+                },
+                {
+                    "path": "src/main/java/org/services",
+                    "analyzable_files": 30,
+                    "extensions": {
+                        "java": 28,
+                        "xml": 2
+                    }
+                },
+                {
+                    "path": "src/test/java",
+                    "analyzable_files": 25,
+                    "extensions": {
+                        "java": 25
+                    }
+                }
+            ],
+            "total_analyzable_files": 100
+        }

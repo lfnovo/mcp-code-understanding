@@ -269,6 +269,253 @@ def register_tools(
             }
 
     @mcp_server.tool(
+        name="get_repo_structure",
+        description="""Retrieve directory structure and analyzable file counts for a repository to guide analysis decisions.
+
+        RESPONSE CHARACTERISTICS:
+        1. Directory Information:
+        - Lists directories containing analyzable source code
+        - Reports number of analyzable files per directory
+        - Shows directory hierarchy
+        - Indicates file extensions present in each location
+
+        2. Usage:
+        - Requires repository to be previously cloned
+        - Helps identify main code directories
+        - Supports planning targeted analysis
+        - Shows where analyzable code is located
+
+        NOTE: Use this tool to understand repository structure and choose which directories to analyze in detail."""
+    )
+    async def get_repo_structure(
+        repo_path: str,
+        directories: List[str] = None,
+        include_files: bool = False
+    ) -> dict:
+        """
+        Get repository structure information with optional file listings.
+        
+        Args:
+            repo_path: Path/URL matching what was provided to clone_repo
+            directories: Optional list of directories to limit results to
+            include_files: Whether to include list of files in response
+        
+        Returns:
+            dict: {
+                "status": str,
+                "message": str,
+                "directories": [{
+                    "path": str,
+                    "analyzable_files": int,
+                    "extensions": {
+                        "py": 10,
+                        "java": 5,
+                        "ts": 3
+                    },
+                    "files": [str]  # Only present if include_files=True
+                }],
+                "total_analyzable_files": int
+            }
+        """
+        # TODO: Implementation Plan
+        # ARCHITECTURAL NOTE: Follow the MCP server pattern where endpoint functions delegate to service classes.
+        # The endpoint itself should be thin, only calling an appropriate service method and handling exceptions.
+        # DO NOT implement business logic in the endpoint - create methods in RepoMapBuilder or a new service class.
+        # See other endpoints (get_source_repo_map, refresh_repo, etc.) for reference.
+        
+        # 1. Repository Status Validation
+        #    - Use identical metadata.json status checking mechanism as get_source_repo_map
+        #    - See: get_source_repo_map() and RepoMapBuilder.get_repo_map_content() for reference
+        #    - IMPORTANT: Only check clone_status - unlike get_source_repo_map, this endpoint
+        #      does NOT need to wait for repo_map_status to be complete, only clone_status
+        #    - Return appropriate "waiting" response if clone incomplete
+        #    - Validate repo_path exists in repo manager
+        #    - Follow error handling patterns from other endpoints
+        
+        # 2. Directory Scanning Setup
+        #    - Get repository instance from repo manager
+        #    - Use EXACT SAME file filtering mechanism as RepoMapBuilder.get_target_files()
+        #    - See: RepoMapBuilder.get_target_files() implementation for filtering logic
+        #    - This ensures we only show files that would appear in repo map
+        #    - Validate provided directories if any
+        
+        # 3. File Analysis
+        #    - Scan repository structure
+        #    - Count files by directory and extension
+        #    - Track running totals
+        #    - Ensure we're only processing files that pass RepoMapBuilder filters
+        #    - See: RepoMapBuilder._is_analyzable_file() for file filtering criteria
+        
+        # 4. Optional File Listing
+        #    - If include_files=True, collect filtered file paths
+        #    - Format paths EXACTLY as they appear in get_source_repo_map response
+        #    - See: RepoMapBuilder._get_relative_path() for path normalization
+        #      * Relative to repo root
+        #      * No leading slash
+        #      * Consistent with get_source_repo_map path format
+        
+        # 5. Response Building
+        #    - Format ALL paths consistent with get_source_repo_map response format
+        #    - Build extension counts
+        #    - Include file lists if requested
+        #    - Calculate total analyzable files
+        #    - See: get_source_repo_map() response structure and error handling patterns
+
+        try:
+            # Delegate to the RepoMapBuilder service to handle all the details
+            return await repo_map_builder.get_repo_structure(
+                repo_path, directories=directories, include_files=include_files
+            )
+        except Exception as e:
+            logger.error(f"Error getting repository structure: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "error": f"Failed to get repository structure: {str(e)}"
+            }
+
+    @mcp_server.tool(
+        name="get_repo_critical_files",
+        description="""Identify and analyze the most structurally significant files in a repository to guide code understanding efforts.
+
+RESPONSE CHARACTERISTICS:
+1. Analysis Metrics:
+   - Calculates importance scores based on:
+     * Function count (weight: 2.0)
+     * Total cyclomatic complexity (weight: 1.5)
+     * Maximum cyclomatic complexity (weight: 1.2)
+     * Lines of code (weight: 0.05)
+   - Provides detailed metrics per file
+   - Ranks files by composite importance score
+
+2. Resource Management:
+   - Repository must be previously cloned via clone_repo
+   - Analysis performed on-demand using Lizard
+   - Efficient for both small and large codebases
+   - Supports both full-repo and targeted analysis
+
+3. Scope Control Options:
+   - 'files': Analyze specific files
+   - 'directories': Analyze specific directories
+   - 'limit': Control maximum results returned
+   - Default limit of 50 most critical files
+
+4. Response Metadata:
+   - Total files analyzed
+   - Analysis completion status
+
+NOTE: This tool is designed to guide initial codebase exploration by identifying structurally significant files. Results can be used to target subsequent get_source_repo_map calls for detailed analysis.""",
+    )
+    async def get_repo_critical_files(
+        repo_path: str,
+        files: List[str] = None,
+        directories: List[str] = None,
+        limit: int = 50,
+        include_metrics: bool = True,
+    ) -> dict:
+        """
+        Analyze and identify the most structurally significant files in a codebase.
+        
+        Uses code complexity metrics to calculate importance scores, helping identify
+        files that are most critical for understanding the system's structure.
+        
+        Args:
+            repo_path: Path/URL matching what was provided to clone_repo
+            files: Optional list of specific files to analyze
+            directories: Optional list of specific directories to analyze
+            limit: Maximum number of files to return (default: 50)
+            include_metrics: Include detailed metrics in response (default: True)
+        
+        Returns:
+            dict: {
+                "status": str,  # "success", "error"
+                "files": [{
+                    "path": str,
+                    "importance_score": float,
+                    "metrics": {  # Only if include_metrics=True
+                        "total_ccn": int,
+                        "max_ccn": int,
+                        "function_count": int,
+                        "nloc": int
+                    }
+                }],
+                "total_files_analyzed": int
+            }
+        """
+        # TODO: Implementation Plan
+        # 1. Repository Status Validation
+        #    - Check metadata.json for repository clone status
+        #    - Return appropriate status if clone is pending:
+        #      {
+        #        "status": "waiting",
+        #        "message": "Repository clone in progress. Please try again once cloning is complete."
+        #      }
+        #    - Ensure repo_path matches a known repository
+        
+        # 2. Repository Access
+        #    - Get repository instance from repo_manager
+        #    - Validate repository path exists
+        #    - Handle repo not found errors
+        
+        # 3. File Selection
+        #    - Use RepoMapBuilder.get_target_files for file filtering
+        #    - Handle empty files/directories parameters
+        #    - Validate file existence and permissions
+        
+        # 4. Lizard Integration
+        #    - Add lizard to project dependencies
+        #    - Create LizardAnalyzer class in analysis/
+        #    - Implement file analysis methods
+        #    - Add error handling for analysis failures
+        
+        # 5. Scoring Implementation
+        #    - Port scoring logic from POC
+        #    - Add score normalization if needed
+        #    - Implement sorting and limiting
+        
+        # 6. Response Building
+        #    - Implement metrics filtering (include_metrics)
+        #    - Format paths relative to repo root
+        #    - Add error details when needed
+
+        # Dummy response for initial implementation
+        return {
+            "status": "success",
+            "files": [
+                {
+                    "path": "src/core/engine.py",
+                    "importance_score": 42.5,
+                    "metrics": {
+                        "total_ccn": 15,
+                        "max_ccn": 8,
+                        "function_count": 12,
+                        "nloc": 145
+                    }
+                },
+                {
+                    "path": "src/services/processor.py",
+                    "importance_score": 38.2,
+                    "metrics": {
+                        "total_ccn": 12,
+                        "max_ccn": 6,
+                        "function_count": 10,
+                        "nloc": 120
+                    }
+                },
+                {
+                    "path": "src/utils/helpers.py",
+                    "importance_score": 25.1,
+                    "metrics": {
+                        "total_ccn": 8,
+                        "max_ccn": 4,
+                        "function_count": 6,
+                        "nloc": 85
+                    }
+                }
+            ],
+            "total_files_analyzed": 25
+        }
+
+    @mcp_server.tool(
         name="get_repo_documentation",
         description="Retrieve and analyze documentation files from a repository, including README files, API docs, design documents, and other documentation. Repository must be previously cloned via clone_repo.",
     )

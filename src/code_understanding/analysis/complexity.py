@@ -34,11 +34,51 @@ class CodeComplexityAnalyzer:
         """
         logger.info(f"Starting analysis of critical files for repo: {repo_path}")
         
-        # TODO 1: Repository Status Validation
+        # Repository Status Validation - MODIFIED TO AVOID get_repository CALL
         try:
-            # Attempt to get repository to validate its existence and status
-            repo = await self.repo_manager.get_repository(repo_path)
+            # Calculate cache path directly instead of using get_repository
+            from ..repository.path_utils import get_cache_path
+            cache_path = get_cache_path(self.repo_manager.cache_dir, repo_path)
+            
+            # Check if repository exists in the filesystem
+            if not cache_path.exists():
+                logger.error(f"Repository not found in cache: {repo_path}")
+                return {
+                    "status": "error", 
+                    "error": f"Repository not found in cache. Please clone it first using clone_repo with URL: {repo_path}"
+                }
+            
+            # Get the absolute path as string (what we previously got from repo.root_path.resolve())
+            cache_path_str = str(cache_path.resolve())
+            
+            # Check if repository is in metadata and validate clone status
+            with self.repo_manager.cache._file_lock():
+                metadata_dict = self.repo_manager.cache._read_metadata()
+                if cache_path_str not in metadata_dict:
+                    logger.error(f"Repository not found in cache metadata: {repo_path}")
+                    return {
+                        "status": "error", 
+                        "error": f"Repository not found in cache. Please clone it first using clone_repo with URL: {repo_path}"
+                    }
+                
+                metadata = metadata_dict[cache_path_str]
+                clone_status = metadata.clone_status
+                if not clone_status or clone_status["status"] != "complete":
+                    logger.info(f"Repository clone is not complete: {repo_path}, status: {clone_status['status'] if clone_status else 'not_started'}")
+                    if clone_status and clone_status["status"] in ["cloning", "copying"]:
+                        return {
+                            "status": "waiting",
+                            "message": f"Repository clone is in progress. Please try again later."
+                        }
+                    else:
+                        return {
+                            "status": "error",
+                            "error": f"Repository has not been cloned. Please clone it first using clone_repo with URL: {repo_path}"
+                        }
+            
+            # Log success
             logger.debug(f"Repository validation successful for {repo_path}")
+            
         except KeyError:
             # Repository not found in cache
             logger.error(f"Repository not found in cache: {repo_path}")
@@ -69,19 +109,19 @@ class CodeComplexityAnalyzer:
                 "error": f"Repository error: {str(e)}"
             }
         
-        # TODO 2: File Selection Strategy
+        # File Selection Strategy - MODIFIED TO USE cache_path DIRECTLY
         try:
-            # Use existing RepoMapBuilder methods to get target files
+            # Use existing RepoMapBuilder methods with the cache path
             if files or directories:
                 # Use targeted file selection when specific paths are provided
                 target_files = await self.repo_map_builder.gather_files_targeted(
-                    str(repo.root_path),
+                    str(cache_path),  # Use cache_path directly
                     files=files,
                     directories=directories
                 )
             else:
                 # Fall back to full repository scan if no specific paths provided
-                target_files = await self.repo_map_builder.gather_files(str(repo.root_path))
+                target_files = await self.repo_map_builder.gather_files(str(cache_path))  # Use cache_path directly
             
             # Check if we have files to analyze
             if not target_files:
@@ -104,14 +144,14 @@ class CodeComplexityAnalyzer:
                 "error": f"Failed to gather target files: {str(e)}"
             }
         
-        # TODO 3: Complexity Analysis Integration
+        # Complexity Analysis Integration - MODIFIED TO USE cache_path DIRECTLY
         try:
             # Prepare result structures
             original_results = []
             files_with_analysis = 0
             
-            # Get repository root as Path object for proper path handling
-            repo_root = Path(str(repo.root_path))
+            # Use our cache path directly
+            repo_root = Path(cache_path)  # No need for str(repo.root_path)
             
             # Create a list of valid file paths (string paths, not Path objects)
             valid_files = []

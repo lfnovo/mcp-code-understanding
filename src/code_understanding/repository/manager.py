@@ -333,11 +333,68 @@ class RepositoryManager:
                 del self.repositories[str_path]
             raise
 
+    async def _cleanup_repos_for_clone(self):
+        """Clean up repositories if we've reached the max limit to make room for a new clone."""
+        # Get actual repositories on disk
+        actual_repos = await asyncio.to_thread(lambda: list(self.cache._get_actual_repos()))
+        
+        if len(actual_repos) < self.config.max_cached_repos:
+            # We're under the limit, no cleanup needed
+            return
+        
+        # We need to remove at least one repository to make room
+        logger.info(f"Repository limit reached ({len(actual_repos)}/{self.config.max_cached_repos}), cleaning up oldest repositories")
+        
+        # Get last access times from metadata
+        with self.cache._file_lock():
+            metadata = self.cache._read_metadata()
+        
+        # Sort repos by access time
+        repo_with_times = []
+        for repo_path in actual_repos:
+            if repo_path in metadata:
+                access_time = datetime.fromisoformat(metadata[repo_path].last_access)
+            else:
+                access_time = datetime.min
+            repo_with_times.append((repo_path, access_time))
+        
+        # Sort by access time (oldest first)
+        sorted_repos = sorted(repo_with_times, key=lambda x: x[1])
+        
+        # Remove oldest repositories until under limit
+        to_remove = len(actual_repos) - self.config.max_cached_repos + 1  # +1 to make room for new repo
+        for i in range(min(to_remove, len(sorted_repos))):
+            repo_path, _ = sorted_repos[i]
+            try:
+                logger.info(f"Removing old repository: {repo_path}")
+                repo_path_obj = Path(repo_path)
+                if repo_path_obj.exists():
+                    await asyncio.to_thread(shutil.rmtree, repo_path_obj)
+                
+                # Remove from in-memory dict if present
+                if repo_path in self.repositories:
+                    del self.repositories[repo_path]
+                
+                # Remove from metadata
+                with self.cache._file_lock():
+                    curr_metadata = self.cache._read_metadata()
+                    if repo_path in curr_metadata:
+                        del curr_metadata[repo_path]
+                    self.cache._write_metadata(curr_metadata)
+                
+            except Exception as e:
+                logger.error(f"Error removing repository {repo_path}: {e}", exc_info=True)
+
     async def clone_repository(
         self, url: str, branch: Optional[str] = None
     ) -> Dict[str, Any]:
         """Clone a remote repository."""
         logger.info(f"Starting clone of repository: {url}")
+        
+        # Before cloning, check if we need to clean up any repositories
+        # to make room for the new one
+        await self._cleanup_repos_for_clone()
+        
         cache_path = get_cache_path(self.cache_dir, url)
         str_path = str(cache_path.resolve())
         logger.debug(f"Cache path for repository: {str_path}")

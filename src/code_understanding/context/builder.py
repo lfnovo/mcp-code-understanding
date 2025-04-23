@@ -386,14 +386,20 @@ class RepoMapBuilder:
             # Check clone status first
             clone_status = metadata.clone_status
             if not clone_status or clone_status["status"] != "complete":
-                return {
-                    "status": "waiting",
-                    "message": f"Repository clone is {clone_status['status'] if clone_status else 'not_started'}",
-                    "retry_guidance": {
-                        "suggested_retry_seconds": 30,  # Conservative default during clone
-                        "size_context": "Repository clone in progress, size unknown",
-                    },
-                }
+                if clone_status and clone_status["status"] in ["cloning", "copying"]:
+                    return {
+                        "status": "waiting",
+                        "message": f"Repository clone is in progress. Please try again later.",
+                        "retry_guidance": {
+                            "suggested_retry_seconds": 30,  # Conservative default during clone
+                            "size_context": "Repository clone in progress, size unknown",
+                        },
+                    }
+                else:
+                    return {
+                        "status": "error",
+                        "error": f"Repository has not been cloned. Please clone it first using clone_repo with URL: {repo_path}"
+                    }
 
             # Then check repo map status
             if not metadata.repo_map_status:
@@ -546,10 +552,16 @@ class RepoMapBuilder:
             # for repo map build to complete
             clone_status = metadata.clone_status
             if not clone_status or clone_status["status"] != "complete":
-                return {
-                    "status": "waiting",
-                    "message": f"Repository clone is {clone_status['status'] if clone_status else 'not_started'}",
-                }
+                if clone_status and clone_status["status"] in ["cloning", "copying"]:
+                    return {
+                        "status": "waiting",
+                        "message": f"Repository clone is in progress. Please try again later."
+                    }
+                else:
+                    return {
+                        "status": "error",
+                        "error": f"Repository has not been cloned. Please clone it first using clone_repo with URL: {repo_path}"
+                    }
         
         # Directory Scanning Setup
         try:

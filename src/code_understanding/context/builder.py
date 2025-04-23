@@ -565,7 +565,48 @@ class RepoMapBuilder:
             
             logger.debug(f"Found {len(target_files)} analyzable files for structure analysis")
             
-            # TODO: Implement File Analysis (to-do #3)
+            # File Analysis (to-do #3)
+            # Initialize structures to track directory data
+            directory_data = {}
+            total_analyzable_files = 0
+            
+            # Process each file
+            for file_path in target_files:
+                # Convert to path relative to repository root
+                rel_path = os.path.normpath(str(Path(file_path).relative_to(cache_path)))
+                
+                # Extract directory and filename
+                dir_path = os.path.dirname(rel_path)
+                if dir_path == "":
+                    dir_path = "."  # Root directory
+                
+                # Extract extension without dot
+                _, ext = os.path.splitext(rel_path)
+                ext = ext[1:] if ext.startswith('.') else ext
+                
+                # Initialize directory data if not exists
+                if dir_path not in directory_data:
+                    directory_data[dir_path] = {
+                        "path": dir_path,
+                        "analyzable_files": 0,
+                        "extensions": {},
+                        "files": [] if include_files else None
+                    }
+                
+                # Update counters
+                directory_data[dir_path]["analyzable_files"] += 1
+                if ext:
+                    directory_data[dir_path]["extensions"][ext] = directory_data[dir_path]["extensions"].get(ext, 0) + 1
+                
+                # Store file path if include_files is True
+                if include_files and directory_data[dir_path]["files"] is not None:
+                    directory_data[dir_path]["files"].append(os.path.basename(rel_path))
+                
+                # Update total count
+                total_analyzable_files += 1
+            
+            logger.debug(f"Analyzed {total_analyzable_files} files across {len(directory_data)} directories")
+            
             # TODO: Implement Optional File Listing (to-do #4)
             # TODO: Implement Response Building (to-do #5)
             

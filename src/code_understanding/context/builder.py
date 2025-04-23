@@ -551,37 +551,56 @@ class RepoMapBuilder:
                     "message": f"Repository clone is {clone_status['status'] if clone_status else 'not_started'}",
                 }
         
-        # TODO: Implement Directory Scanning Setup (to-do #2)
-        # TODO: Implement File Analysis (to-do #3)
-        # TODO: Implement Optional File Listing (to-do #4)
-        # TODO: Implement Response Building (to-do #5)
-        
-        # Temporary dummy response while we implement the rest of the functionality
-        return {
-            "status": "success",
-            "directories": [
-                {
-                    "path": "src/main/java/org/core",
-                    "analyzable_files": 45,
-                    "extensions": {
-                        "java": 45
+        # Directory Scanning Setup (to-do #2)
+        try:
+            # Use exactly the same file filtering logic as get_repo_map_content
+            if directories:
+                # Targeted directory scanning with the same filters
+                target_files = await self.gather_files_targeted(
+                    cache_path, files=None, directories=directories
+                )
+            else:
+                # Full repository scan with the same filters
+                target_files = await self.gather_files(cache_path)
+            
+            logger.debug(f"Found {len(target_files)} analyzable files for structure analysis")
+            
+            # TODO: Implement File Analysis (to-do #3)
+            # TODO: Implement Optional File Listing (to-do #4)
+            # TODO: Implement Response Building (to-do #5)
+            
+            # Temporary dummy response while we implement the rest of the functionality
+            return {
+                "status": "success",
+                "directories": [
+                    {
+                        "path": "src/main/java/org/core",
+                        "analyzable_files": 45,
+                        "extensions": {
+                            "java": 45
+                        }
+                    },
+                    {
+                        "path": "src/main/java/org/services",
+                        "analyzable_files": 30,
+                        "extensions": {
+                            "java": 28,
+                            "xml": 2
+                        }
+                    },
+                    {
+                        "path": "src/test/java",
+                        "analyzable_files": 25,
+                        "extensions": {
+                            "java": 25
+                        }
                     }
-                },
-                {
-                    "path": "src/main/java/org/services",
-                    "analyzable_files": 30,
-                    "extensions": {
-                        "java": 28,
-                        "xml": 2
-                    }
-                },
-                {
-                    "path": "src/test/java",
-                    "analyzable_files": 25,
-                    "extensions": {
-                        "java": 25
-                    }
-                }
-            ],
-            "total_analyzable_files": 100
-        }
+                ],
+                "total_analyzable_files": 100
+            }
+        except Exception as e:
+            logger.error(f"Error during directory scanning: {e}", exc_info=True)
+            return {
+                "status": "error", 
+                "error": f"Failed to scan repository directories: {str(e)}"
+            }

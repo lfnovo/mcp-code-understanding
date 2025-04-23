@@ -397,79 +397,25 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
                 "total_files_analyzed": int
             }
         """
-        # TODO: Implementation Plan
-        # 1. Repository Status Validation
-        #    - Check metadata.json for repository clone status
-        #    - Return appropriate status if clone is pending:
-        #      {
-        #        "status": "waiting",
-        #        "message": "Repository clone in progress. Please try again once cloning is complete."
-        #      }
-        #    - Ensure repo_path matches a known repository
-        
-        # 2. Repository Access
-        #    - Get repository instance from repo_manager
-        #    - Validate repository path exists
-        #    - Handle repo not found errors
-        
-        # 3. File Selection
-        #    - Use RepoMapBuilder.get_target_files for file filtering
-        #    - Handle empty files/directories parameters
-        #    - Validate file existence and permissions
-        
-        # 4. Lizard Integration
-        #    - Add lizard to project dependencies
-        #    - Create LizardAnalyzer class in analysis/
-        #    - Implement file analysis methods
-        #    - Add error handling for analysis failures
-        
-        # 5. Scoring Implementation
-        #    - Port scoring logic from POC
-        #    - Add score normalization if needed
-        #    - Implement sorting and limiting
-        
-        # 6. Response Building
-        #    - Implement metrics filtering (include_metrics)
-        #    - Format paths relative to repo root
-        #    - Add error details when needed
-
-        # Dummy response for initial implementation
-        return {
-            "status": "success",
-            "files": [
-                {
-                    "path": "src/core/engine.py",
-                    "importance_score": 42.5,
-                    "metrics": {
-                        "total_ccn": 15,
-                        "max_ccn": 8,
-                        "function_count": 12,
-                        "nloc": 145
-                    }
-                },
-                {
-                    "path": "src/services/processor.py",
-                    "importance_score": 38.2,
-                    "metrics": {
-                        "total_ccn": 12,
-                        "max_ccn": 6,
-                        "function_count": 10,
-                        "nloc": 120
-                    }
-                },
-                {
-                    "path": "src/utils/helpers.py",
-                    "importance_score": 25.1,
-                    "metrics": {
-                        "total_ccn": 8,
-                        "max_ccn": 4,
-                        "function_count": 6,
-                        "nloc": 85
-                    }
-                }
-            ],
-            "total_files_analyzed": 25
-        }
+        try:
+            # Import and initialize the analyzer
+            from code_understanding.analysis.complexity import CodeComplexityAnalyzer
+            analyzer = CodeComplexityAnalyzer(repo_manager)
+            
+            # Delegate to the specialized CodeComplexityAnalyzer module
+            return await analyzer.analyze_repo_critical_files(
+                repo_path=repo_path,
+                files=files,
+                directories=directories,
+                limit=limit,
+                include_metrics=include_metrics
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error in get_repo_critical_files: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "error": f"An unexpected error occurred: {str(e)}"
+            }
 
     @mcp_server.tool(
         name="get_repo_documentation",

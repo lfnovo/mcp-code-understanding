@@ -598,16 +598,17 @@ class RepoMapBuilder:
                 if ext:
                     directory_data[dir_path]["extensions"][ext] = directory_data[dir_path]["extensions"].get(ext, 0) + 1
                 
-                # Store file path if include_files is True
+                # Optional File Listing (to-do #4)
+                # Store full relative path (not just basename) if include_files is True
                 if include_files and directory_data[dir_path]["files"] is not None:
-                    directory_data[dir_path]["files"].append(os.path.basename(rel_path))
+                    # Store the full relative path, ensuring format matches get_source_repo_map
+                    directory_data[dir_path]["files"].append(rel_path)
                 
                 # Update total count
                 total_analyzable_files += 1
             
             logger.debug(f"Analyzed {total_analyzable_files} files across {len(directory_data)} directories")
             
-            # TODO: Implement Optional File Listing (to-do #4)
             # TODO: Implement Response Building (to-do #5)
             
             # Temporary dummy response while we implement the rest of the functionality

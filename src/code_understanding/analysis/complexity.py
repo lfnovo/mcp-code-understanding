@@ -6,8 +6,9 @@ from typing import List, Dict, Any, Optional
 logger = logging.getLogger("code_understanding.analysis.complexity")
 
 class CodeComplexityAnalyzer:
-    def __init__(self, repo_manager):
+    def __init__(self, repo_manager, repo_map_builder):
         self.repo_manager = repo_manager
+        self.repo_map_builder = repo_map_builder
     
     async def analyze_repo_critical_files(
         self,
@@ -68,6 +69,33 @@ class CodeComplexityAnalyzer:
             }
         
         # TODO 2: File Selection Strategy
+        try:
+            # Use existing RepoMapBuilder method to get target files
+            target_files = await self.repo_map_builder.gather_files_targeted(
+                str(repo.root_path),
+                files=files,
+                directories=directories
+            )
+            
+            # Check if we have files to analyze
+            if not target_files:
+                logger.info(f"No matching source files found in {repo_path} with specified criteria")
+                return {
+                    "status": "success",
+                    "files": [],
+                    "total_files_analyzed": 0,
+                    "message": "No matching source files found with the specified criteria"
+                }
+            
+            logger.info(f"Selected {len(target_files)} files for complexity analysis")
+            
+        except Exception as e:
+            logger.error(f"Error during file selection: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "error": f"Failed to gather target files: {str(e)}"
+            }
+        
         # TODO 3: Complexity Analysis Integration
         # TODO 4: Result Processing
         

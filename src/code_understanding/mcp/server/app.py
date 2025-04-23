@@ -400,7 +400,7 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
         try:
             # Import and initialize the analyzer
             from code_understanding.analysis.complexity import CodeComplexityAnalyzer
-            analyzer = CodeComplexityAnalyzer(repo_manager)
+            analyzer = CodeComplexityAnalyzer(repo_manager, repo_map_builder)
             
             # Delegate to the specialized CodeComplexityAnalyzer module
             return await analyzer.analyze_repo_critical_files(

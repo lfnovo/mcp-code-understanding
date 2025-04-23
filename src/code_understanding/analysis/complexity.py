@@ -2,6 +2,7 @@ import logging
 import lizard
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+import os
 
 logger = logging.getLogger("code_understanding.analysis.complexity")
 
@@ -70,12 +71,17 @@ class CodeComplexityAnalyzer:
         
         # TODO 2: File Selection Strategy
         try:
-            # Use existing RepoMapBuilder method to get target files
-            target_files = await self.repo_map_builder.gather_files_targeted(
-                str(repo.root_path),
-                files=files,
-                directories=directories
-            )
+            # Use existing RepoMapBuilder methods to get target files
+            if files or directories:
+                # Use targeted file selection when specific paths are provided
+                target_files = await self.repo_map_builder.gather_files_targeted(
+                    str(repo.root_path),
+                    files=files,
+                    directories=directories
+                )
+            else:
+                # Fall back to full repository scan if no specific paths provided
+                target_files = await self.repo_map_builder.gather_files(str(repo.root_path))
             
             # Check if we have files to analyze
             if not target_files:
@@ -84,7 +90,9 @@ class CodeComplexityAnalyzer:
                     "status": "success",
                     "files": [],
                     "total_files_analyzed": 0,
-                    "message": "No matching source files found with the specified criteria"
+                    "files_with_analysis": 0,
+                    "files_without_analysis": 0,
+                    "results_truncated": False
                 }
             
             logger.info(f"Selected {len(target_files)} files for complexity analysis")
@@ -97,45 +105,101 @@ class CodeComplexityAnalyzer:
             }
         
         # TODO 3: Complexity Analysis Integration
-        # TODO 4: Result Processing
-        
-        # Temporary placeholder for remaining implementation
-        return {
-            "status": "success",
-            "files": [
-                {
-                    "path": "src/core/engine.py",
-                    "importance_score": 42.5,
-                    "metrics": {
-                        "total_ccn": 15,
-                        "max_ccn": 8,
-                        "function_count": 12,
-                        "nloc": 145
+        try:
+            # Prepare result structures
+            original_results = []
+            files_with_analysis = 0
+            
+            # Get repository root as Path object for proper path handling
+            repo_root = Path(str(repo.root_path))
+            
+            # Create a list of valid file paths (string paths, not Path objects)
+            valid_files = []
+            for file_path in target_files:
+                file_path_obj = Path(file_path)
+                if file_path_obj.is_file():
+                    valid_files.append(str(file_path_obj))
+            
+            # Use lizard's batch analyze_files method with an appropriate thread count
+            # Number of threads can be adjusted based on system resources and file count
+            num_threads = min(os.cpu_count() or 4, 8)  # Use at most 8 threads, or fewer if CPU count is lower
+            logger.debug(f"Analyzing {len(valid_files)} files using {num_threads} threads")
+            
+            # NOTE: Lizard will silently skip files that it cannot process (no parser available) 
+            # or files that don't contain any functions. These will not appear in the returned 
+            # file_analyses, and there's no direct way to determine which files were skipped.
+            file_analyses = lizard.analyze_files(valid_files, threads=num_threads)
+            
+            # Process each file analysis
+            for file_analysis in file_analyses:
+                try:
+                    file_path = file_analysis.filename
+                    
+                    # Skip files with no functions
+                    if not file_analysis.function_list:
+                        continue
+                    
+                    # Calculate metrics
+                    total_ccn = sum(f.cyclomatic_complexity for f in file_analysis.function_list)
+                    max_ccn = max((f.cyclomatic_complexity for f in file_analysis.function_list), default=0)
+                    function_count = len(file_analysis.function_list)
+                    nloc = file_analysis.nloc
+                    
+                    # Calculate importance score
+                    score = self.calculate_importance_score(function_count, total_ccn, max_ccn, nloc)
+                    
+                    # Convert absolute path to repository-relative path in OS-agnostic way
+                    # Using os.path.relpath for cross-platform compatibility
+                    relative_path = os.path.relpath(file_path, str(repo_root))
+                    
+                    # Create result entry
+                    result_entry = {
+                        "path": relative_path,
+                        "importance_score": round(score, 2)
                     }
-                },
-                {
-                    "path": "src/services/processor.py",
-                    "importance_score": 38.2,
-                    "metrics": {
-                        "total_ccn": 12,
-                        "max_ccn": 6,
-                        "function_count": 10,
-                        "nloc": 120
-                    }
-                },
-                {
-                    "path": "src/utils/helpers.py",
-                    "importance_score": 25.1,
-                    "metrics": {
-                        "total_ccn": 8,
-                        "max_ccn": 4,
-                        "function_count": 6,
-                        "nloc": 85
-                    }
-                }
-            ],
-            "total_files_analyzed": 25
-        }
+                    
+                    # Add metrics if requested
+                    if include_metrics:
+                        result_entry["metrics"] = {
+                            "total_ccn": total_ccn,
+                            "max_ccn": max_ccn,
+                            "function_count": function_count,
+                            "nloc": nloc
+                        }
+                    
+                    original_results.append(result_entry)
+                    files_with_analysis += 1
+                    
+                except Exception as e:
+                    logger.warning(f"Error processing analysis for file {file_path}: {str(e)}")
+                    continue
+            
+            # Calculate files without analysis
+            files_without_analysis = len(valid_files) - files_with_analysis
+            
+            # Sort results by importance score in descending order
+            original_results.sort(key=lambda x: x["importance_score"], reverse=True)
+            
+            # Determine if results were truncated and apply limit
+            results_truncated = limit > 0 and len(original_results) > limit
+            limited_results = original_results[:limit] if limit > 0 else original_results
+            
+            # Return formatted response with new fields
+            return {
+                "status": "success",
+                "files": limited_results,
+                "total_files_analyzed": len(valid_files),
+                "files_with_analysis": files_with_analysis,
+                "files_without_analysis": files_without_analysis,
+                "results_truncated": results_truncated
+            }
+            
+        except Exception as e:
+            logger.error(f"Error during complexity analysis: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "error": f"Failed to analyze file complexity: {str(e)}"
+            }
     
     def calculate_importance_score(self, function_count, total_ccn, max_ccn, nloc):
         """Calculate importance score using the weighted formula."""

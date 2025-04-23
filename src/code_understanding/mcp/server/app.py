@@ -317,50 +317,6 @@ def register_tools(
                 "total_analyzable_files": int
             }
         """
-        # TODO: Implementation Plan
-        # ARCHITECTURAL NOTE: Follow the MCP server pattern where endpoint functions delegate to service classes.
-        # The endpoint itself should be thin, only calling an appropriate service method and handling exceptions.
-        # DO NOT implement business logic in the endpoint - create methods in RepoMapBuilder or a new service class.
-        # See other endpoints (get_source_repo_map, refresh_repo, etc.) for reference.
-        
-        # 1. Repository Status Validation
-        #    - Use identical metadata.json status checking mechanism as get_source_repo_map
-        #    - See: get_source_repo_map() and RepoMapBuilder.get_repo_map_content() for reference
-        #    - IMPORTANT: Only check clone_status - unlike get_source_repo_map, this endpoint
-        #      does NOT need to wait for repo_map_status to be complete, only clone_status
-        #    - Return appropriate "waiting" response if clone incomplete
-        #    - Validate repo_path exists in repo manager
-        #    - Follow error handling patterns from other endpoints
-        
-        # 2. Directory Scanning Setup
-        #    - Get repository instance from repo manager
-        #    - Use EXACT SAME file filtering mechanism as RepoMapBuilder.get_target_files()
-        #    - See: RepoMapBuilder.get_target_files() implementation for filtering logic
-        #    - This ensures we only show files that would appear in repo map
-        #    - Validate provided directories if any
-        
-        # 3. File Analysis
-        #    - Scan repository structure
-        #    - Count files by directory and extension
-        #    - Track running totals
-        #    - Ensure we're only processing files that pass RepoMapBuilder filters
-        #    - See: RepoMapBuilder._is_analyzable_file() for file filtering criteria
-        
-        # 4. Optional File Listing
-        #    - If include_files=True, collect filtered file paths
-        #    - Format paths EXACTLY as they appear in get_source_repo_map response
-        #    - See: RepoMapBuilder._get_relative_path() for path normalization
-        #      * Relative to repo root
-        #      * No leading slash
-        #      * Consistent with get_source_repo_map path format
-        
-        # 5. Response Building
-        #    - Format ALL paths consistent with get_source_repo_map response format
-        #    - Build extension counts
-        #    - Include file lists if requested
-        #    - Calculate total analyzable files
-        #    - See: get_source_repo_map() response structure and error handling patterns
-
         try:
             # Delegate to the RepoMapBuilder service to handle all the details
             return await repo_map_builder.get_repo_structure(

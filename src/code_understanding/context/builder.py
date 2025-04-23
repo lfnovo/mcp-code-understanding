@@ -551,7 +551,7 @@ class RepoMapBuilder:
                     "message": f"Repository clone is {clone_status['status'] if clone_status else 'not_started'}",
                 }
         
-        # Directory Scanning Setup (to-do #2)
+        # Directory Scanning Setup
         try:
             # Use exactly the same file filtering logic as get_repo_map_content
             if directories:
@@ -565,7 +565,7 @@ class RepoMapBuilder:
             
             logger.debug(f"Found {len(target_files)} analyzable files for structure analysis")
             
-            # File Analysis (to-do #3)
+            # File Analysis
             # Initialize structures to track directory data
             directory_data = {}
             total_analyzable_files = 0
@@ -598,7 +598,7 @@ class RepoMapBuilder:
                 if ext:
                     directory_data[dir_path]["extensions"][ext] = directory_data[dir_path]["extensions"].get(ext, 0) + 1
                 
-                # Optional File Listing (to-do #4)
+                # Optional File Listing
                 # Store full relative path (not just basename) if include_files is True
                 if include_files and directory_data[dir_path]["files"] is not None:
                     # Store the full relative path, ensuring format matches get_source_repo_map
@@ -609,40 +609,32 @@ class RepoMapBuilder:
             
             logger.debug(f"Analyzed {total_analyzable_files} files across {len(directory_data)} directories")
             
-            # TODO: Implement Response Building (to-do #5)
+            # Response Building
+            # Transform directory_data into response format
+            directories_list = []
+            for dir_path, dir_info in sorted(directory_data.items()):
+                directory_entry = {
+                    "path": dir_info["path"],
+                    "analyzable_files": dir_info["analyzable_files"],
+                    "extensions": dir_info["extensions"]
+                }
+                
+                # Add files list only if include_files was True and files were collected
+                if include_files and dir_info["files"] is not None:
+                    directory_entry["files"] = sorted(dir_info["files"])
+                
+                directories_list.append(directory_entry)
             
-            # Temporary dummy response while we implement the rest of the functionality
+            # Build final response
             return {
                 "status": "success",
-                "directories": [
-                    {
-                        "path": "src/main/java/org/core",
-                        "analyzable_files": 45,
-                        "extensions": {
-                            "java": 45
-                        }
-                    },
-                    {
-                        "path": "src/main/java/org/services",
-                        "analyzable_files": 30,
-                        "extensions": {
-                            "java": 28,
-                            "xml": 2
-                        }
-                    },
-                    {
-                        "path": "src/test/java",
-                        "analyzable_files": 25,
-                        "extensions": {
-                            "java": 25
-                        }
-                    }
-                ],
-                "total_analyzable_files": 100
+                "directories": directories_list,
+                "total_analyzable_files": total_analyzable_files
             }
+            
         except Exception as e:
-            logger.error(f"Error during directory scanning: {e}", exc_info=True)
+            logger.error(f"Error during repository structure analysis: {e}", exc_info=True)
             return {
                 "status": "error", 
-                "error": f"Failed to scan repository directories: {str(e)}"
+                "error": f"Failed to analyze repository structure: {str(e)}"
             }

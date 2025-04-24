@@ -1,16 +1,6 @@
 """
 Core MCP server implementation using FastMCP.
 """
-
-try:
-    import importlib
-
-    importlib.reload(
-        __import__("code_understanding.mcp.server.debug")
-    )  # triggers the file-level code block
-except ImportError:
-    pass
-
 import logging
 import sys
 import asyncio

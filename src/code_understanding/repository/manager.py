@@ -268,6 +268,8 @@ class RepositoryManager:
         is_local: bool = False,
     ):
         """Internal method to perform the actual clone or copy"""
+        # Store original URL for metadata/logs
+        original_url = url
         cache_path = Path(str_path)
 
         try:
@@ -294,19 +296,19 @@ class RepositoryManager:
                     ignore=ignore_git,
                 )
             else:
-                # For Git repos, check for GitHub token and modify URL if needed
-                if not is_local and is_git_url(url):
+                # For Git repos, modify URL only for clone operation
+                clone_url = url  # Default to original
+                if not is_local:
                     token = os.environ.get('GITHUB_TOKEN')
-                    logger.debug(f"Checking for GitHub token - URL: {url}, Token exists: {bool(token)}")
                     if token:
                         parsed = urlparse(url)
                         if parsed.hostname == 'github.com':
-                            logger.debug("Modifying URL to use token")
-                            url = f"https://{token}@github.com{parsed.path}"
+                            # Use token URL only for clone
+                            clone_url = f"https://{token}@github.com{parsed.path}"
+                            logger.debug(f"Using authenticated URL for clone: https://***@github.com{parsed.path}")
                 
-                # For Git repos, use clone_from
-                logger.debug(f"Cloning from URL: {url}")
-                await asyncio.to_thread(Repo.clone_from, url, cache_path, branch=branch)
+                # Use clone_url for git operation only
+                await asyncio.to_thread(Repo.clone_from, clone_url, cache_path, branch=branch)
 
             # Update success status
             await self.cache.update_clone_status(
@@ -314,8 +316,8 @@ class RepositoryManager:
                 {"status": "complete", "completed_at": datetime.now().isoformat()},
             )
 
-            # Register the repo in cache
-            await self.cache.add_repo(str_path, url)
+            # Register the repo with original URL
+            await self.cache.add_repo(str_path, original_url)
 
             # Import here to avoid circular dependency
             from ..context.builder import RepoMapBuilder
@@ -326,7 +328,7 @@ class RepositoryManager:
 
         except Exception as e:
             logger.error(
-                f"{'Copy' if is_local else 'Clone'} failed for {url}: {str(e)}"
+                f"{'Copy' if is_local else 'Clone'} failed for {original_url}: {str(e)}"
             )
             # Update failure status
             await self.cache.update_clone_status(

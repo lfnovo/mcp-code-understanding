@@ -22,6 +22,7 @@ wheels/
 
 # Virtual Environment
 venv/
+.venv/
 env/
 ENV/
 
@@ -58,3 +59,4 @@ dmypy.json
 # Jupyter Notebook
 .ipynb_checkpoints
 .aider*
+

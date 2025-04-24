@@ -16,8 +16,6 @@ from .manager import RepositoryManager
 
 logger = logging.getLogger(__name__)
 
-# PHASE 2: Backend Module Creation
-# TODO: Implement is_likely_doc_file function
 def is_likely_doc_file(filepath: str, config) -> bool:
     """
     Determine if a file is likely a documentation file.
@@ -53,7 +51,6 @@ def is_likely_doc_file(filepath: str, config) -> bool:
     return ext in include_exts
 
 
-# TODO: Implement get_doc_format function
 def get_doc_format(filepath: str, config) -> str:
     """
     Get document format based on configured mappings.
@@ -86,7 +83,6 @@ def get_doc_format(filepath: str, config) -> str:
     return "unknown"
 
 
-# TODO: Implement categorize_doc_file function
 def categorize_doc_file(rel_path: str, config) -> str:
     """
     Categorize document based on configured patterns.
@@ -111,7 +107,6 @@ def categorize_doc_file(rel_path: str, config) -> str:
     return "other"
 
 
-# TODO: Implement calculate_stats function
 def calculate_stats(doc_files) -> Dict[str, Any]:
     """
     Calculate documentation statistics.
@@ -140,7 +135,6 @@ def calculate_stats(doc_files) -> Dict[str, Any]:
     }
 
 
-# TODO: Implement get_repository_documentation function
 async def get_repository_documentation(repo_path: str) -> Dict[str, Any]:
     """
     Discover documentation files in a repository.

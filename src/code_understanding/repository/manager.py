@@ -10,6 +10,7 @@ from datetime import datetime
 import shutil
 import logging
 import os
+from urllib.parse import urlparse
 
 import git
 from git.repo import Repo
@@ -293,7 +294,18 @@ class RepositoryManager:
                     ignore=ignore_git,
                 )
             else:
+                # For Git repos, check for GitHub token and modify URL if needed
+                if not is_local and is_git_url(url):
+                    token = os.environ.get('GITHUB_TOKEN')
+                    logger.debug(f"Checking for GitHub token - URL: {url}, Token exists: {bool(token)}")
+                    if token:
+                        parsed = urlparse(url)
+                        if parsed.hostname == 'github.com':
+                            logger.debug("Modifying URL to use token")
+                            url = f"https://{token}@github.com{parsed.path}"
+                
                 # For Git repos, use clone_from
+                logger.debug(f"Cloning from URL: {url}")
                 await asyncio.to_thread(Repo.clone_from, url, cache_path, branch=branch)
 
             # Update success status

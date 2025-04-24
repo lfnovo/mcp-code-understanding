@@ -10,21 +10,58 @@ An MCP (Model Context Protocol) server designed to understand codebases and prov
 - Natural language Q&A about codebases
 - Extensible parser architecture
 
+## Prerequisites
+
+- **Python 3.11 or 3.12**: Required for both development and usage
+  ```bash
+  # Verify your Python version
+  python --version
+  # or
+  python3 --version
+  ```
+- **UV Package Manager**: The modern Python package installer
+  ```bash
+  # Install UV
+  curl -sSf https://astral.sh/uv/install.sh | sh
+  ```
+
 ## Installation
 
-1. Ensure you have Python 3.11+ installed
-2. Clone this repository
-3. Create and activate a virtual environment:
+### For End Users
+
+Install and run the application globally:
 
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+# Install the package globally
+uv pip install --system mcp-code-understanding
+
+# Run the application
+mcp-code-understanding
 ```
 
-4. Install dependencies:
+### For Developers
+
+To contribute or run this project locally:
 
 ```bash
-pip install -e .
+# 1. Clone the repository
+git clone https://github.com/yourusername/mcp-code-understanding.git
+cd mcp-code-understanding
+
+# 2. Create virtual environment
+uv venv
+
+# 3. Install dependencies (editable mode with dev extras)
+uv pip install -e ".[dev]"
+
+# 4. Activate virtual environment
+source .venv/bin/activate
+
+# 5. Run tests
+pytest
+
+# 6. Run the application
+mcp-code-understanding
 ```
 
 ## Configuration
@@ -69,7 +106,7 @@ export GITHUB_TOKEN="your-token-here"
 Start the server:
 
 ```bash
-python -m code_understanding.mcp.server.app
+uv venv run python -m code_understanding.mcp.server.app
 ```
 
 ## MCP Tools
@@ -87,20 +124,20 @@ The server provides the following MCP tools:
 Run tests:
 
 ```bash
-pytest
+uv venv run pytest
 ```
 
 Format code:
 
 ```bash
-black .
-isort .
+uv venv run black .
+uv venv run isort .
 ```
 
 Type checking:
 
 ```bash
-mypy .
+uv venv run mypy .
 ```
 
 ## License

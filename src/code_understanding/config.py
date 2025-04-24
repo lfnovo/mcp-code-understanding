@@ -4,7 +4,7 @@ Configuration management for the Code Understanding server.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 import yaml
 import os
 import logging
@@ -24,6 +24,42 @@ class IndexerConfig:
     def __post_init__(self):
         # Expand ~ to home directory in vector_db_path
         self.vector_db_path = os.path.expanduser(self.vector_db_path)
+
+
+@dataclass
+class DocumentationConfig:
+    include_tags: List[str] = None
+    include_extensions: List[str] = None
+    format_mapping: Dict[str, str] = None
+    category_patterns: Dict[str, List[str]] = None
+
+    def __post_init__(self):
+        # Set default values if not provided
+        if self.include_tags is None:
+            self.include_tags = ["markdown", "rst", "adoc"]
+        if self.include_extensions is None:
+            self.include_extensions = [".md", ".markdown", ".rst", ".txt", ".adoc", ".ipynb"]
+        if self.format_mapping is None:
+            self.format_mapping = {
+                # Tag-based format mapping
+                "tag:markdown": "markdown",
+                "tag:rst": "restructuredtext",
+                "tag:adoc": "asciidoc",
+                # Extension-based format mapping
+                "ext:.md": "markdown",
+                "ext:.markdown": "markdown",
+                "ext:.rst": "restructuredtext",
+                "ext:.txt": "plaintext",
+                "ext:.adoc": "asciidoc",
+                "ext:.ipynb": "jupyter"
+            }
+        if self.category_patterns is None:
+            self.category_patterns = {
+                "readme": ["readme"],
+                "api": ["api"],
+                "documentation": ["docs", "documentation"],
+                "examples": ["examples", "sample"]
+            }
 
 
 @dataclass
@@ -94,6 +130,7 @@ class ServerConfig:
     parser: ParserConfig = None
     indexer: IndexerConfig = None
     treesitter: TreeSitterConfig = None
+    documentation: DocumentationConfig = None
 
     def __post_init__(self):
         if self.repository is None:
@@ -106,6 +143,8 @@ class ServerConfig:
             self.indexer = IndexerConfig()
         if self.treesitter is None:
             self.treesitter = TreeSitterConfig()
+        if self.documentation is None:
+            self.documentation = DocumentationConfig()
 
 
 def ensure_default_config() -> None:
@@ -209,6 +248,9 @@ def load_config(config_path: str = None) -> ServerConfig:
 
             if "treesitter" in config_data and isinstance(config_data["treesitter"], dict):
                 config_data["treesitter"] = TreeSitterConfig(**config_data["treesitter"])
+
+            if "documentation" in config_data and isinstance(config_data["documentation"], dict):
+                config_data["documentation"] = DocumentationConfig(**config_data["documentation"])
 
             return ServerConfig(**config_data)
 

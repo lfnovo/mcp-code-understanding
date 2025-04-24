@@ -35,3 +35,37 @@ treesitter:
     - typescript
     - java
     - go
+
+documentation:
+  include_tags:
+    - markdown
+    - rst
+    - adoc
+  include_extensions:
+    - .md
+    - .markdown
+    - .rst
+    - .txt
+    - .adoc
+    - .ipynb
+  format_mapping:
+    tag:markdown: markdown
+    tag:rst: restructuredtext
+    tag:adoc: asciidoc
+    ext:.md: markdown
+    ext:.markdown: markdown
+    ext:.rst: restructuredtext
+    ext:.txt: plaintext
+    ext:.adoc: asciidoc
+    ext:.ipynb: jupyter
+  category_patterns:
+    readme: 
+      - readme
+    api: 
+      - api
+    documentation:
+      - docs
+      - documentation
+    examples:
+      - examples
+      - sample

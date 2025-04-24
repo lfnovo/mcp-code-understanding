@@ -21,6 +21,7 @@ from mcp.server.fastmcp import FastMCP
 from code_understanding.config import ServerConfig, load_config
 from code_understanding.repository import RepositoryManager
 from code_understanding.context.builder import RepoMapBuilder
+from code_understanding.repository.documentation import get_repository_documentation
 
 # Configure logging
 logging.basicConfig(
@@ -424,7 +425,7 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
     async def get_repo_documentation(repo_path: str) -> dict:
         """
         Retrieve and analyze repository documentation files.
-
+        
         Searches for and analyzes documentation within the repository, including:
         - README files
         - API documentation
@@ -432,27 +433,46 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
         - User guides
         - Installation instructions
         - Other documentation files
-
+        
         Args:
             repo_path (str): Path or URL matching what was originally provided to clone_repo
-
+        
         Returns:
-            dict: Currently returns a stub response as feature is under development:
+            dict: Documentation analysis results with format:
                 {
-                    "status": "pending",
-                    "message": str  # Information about feature status
+                    "status": str,  # "success", "error", or "waiting"
+                    "message": str,  # Only for error/waiting status
+                    "documentation": {  # Only for success status
+                        "files": [
+                            {
+                                "path": str,      # Relative path in repo
+                                "category": str,  # readme, api, docs, etc.
+                                "format": str     # markdown, rst, etc.
+                            }
+                        ],
+                        "directories": [
+                            {
+                                "path": str,
+                                "doc_count": int
+                            }
+                        ],
+                        "stats": {
+                            "total_files": int,
+                            "by_category": dict,
+                            "by_format": dict
+                        }
+                    }
                 }
-
-        Note:
-            - Repository must be previously cloned using clone_repo
-            - Will support various documentation formats (markdown, rst, etc.)
-            - Will provide structured access to repository documentation
-            - Currently under development
         """
-        return {
-            "status": "pending",
-            "message": "This endpoint is under construction. Documentation retrieval will be implemented soon.",
-        }
+        try:
+            # Call documentation backend module (thin endpoint)
+            return await get_repository_documentation(repo_path)
+        except Exception as e:
+            logger.error(f"Error retrieving repository documentation: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "message": f"Failed to retrieve repository documentation: {str(e)}"
+            }
 
 
 # Create server instance that can be imported by MCP CLI

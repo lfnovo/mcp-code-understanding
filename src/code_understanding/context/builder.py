@@ -16,7 +16,7 @@ from aider.repomap import RepoMap
 from .extended_repo_map import UntruncatedRepoMap
 
 from ..repository.cache import RepositoryCache, RepositoryMetadata
-from .file_filter import FileFilter
+from ..repository.file_filtering import RepoFilter
 from ..repository.path_utils import get_cache_path
 from .extractor import RepoMapExtractor
 
@@ -211,21 +211,15 @@ class RepoMapBuilder:
 
     async def gather_files(self, root_dir: str) -> List[str]:
         """
-        Gather all source files in the repository that match our extension and text criteria.
-        Always performs a fresh scan of the directory.
-
-        Args:
-            root_dir: Repository root directory
-
-        Returns:
-            List of files to include in RepoMap
+        Gather all source files in the repository that match our criteria.
+        Uses cache path directly - no Repository instance needed.
         """
-        file_filter = FileFilter()  # Create new filter instance each time
-        files = file_filter.find_source_files(root_dir)  # This does a fresh scan
+        repo_filter = RepoFilter(Path(root_dir))
+        files = repo_filter.find_source_files()
         logger.debug(
-            f"Found {len(files)} files matching extension and text criteria in {root_dir}"
+            f"Found {len(files)} files matching criteria in {root_dir}"
         )
-        return sorted(files)  # Sort for consistent ordering
+        return sorted(files)
 
     async def gather_files_targeted(
         self,
@@ -235,32 +229,20 @@ class RepoMapBuilder:
     ) -> List[str]:
         """
         Optimized file gathering that only checks specified directories or files.
-        Files must match our extension and text criteria to be included.
-
-        Args:
-            root_dir: Repository root directory
-            files: Optional list of specific files to check
-            directories: Optional list of directories to scan
-
-        Returns:
-            List of valid source files that match the criteria
         """
-        file_filter = FileFilter()
+        repo_filter = RepoFilter(Path(root_dir))
         target_files = []
 
         if files:
             # Direct file checking
             for file in files:
-                file_path = os.path.join(root_dir, file)
-                if os.path.exists(file_path) and file_filter.should_include(file_path):
-                    target_files.append(file_path)
+                file_path = Path(root_dir) / file
+                if repo_filter.should_include(file_path):
+                    target_files.append(str(file_path))
 
         if directories:
-            # Scan specified directories using our extension and text filtering
-            for directory in directories:
-                dir_path = os.path.join(root_dir, directory)
-                if os.path.exists(dir_path) and os.path.isdir(dir_path):
-                    target_files.extend(file_filter.find_source_files(dir_path))
+            # Scan specified directories
+            target_files.extend(repo_filter.find_source_files(directories))
 
         target_files = list(dict.fromkeys(target_files))  # Remove duplicates
         logger.debug(

@@ -13,6 +13,7 @@ from datetime import datetime
 from ..config import load_config
 from .path_utils import get_cache_path
 from .manager import RepositoryManager
+from ..repository.file_filtering import RepoFilter
 
 logger = logging.getLogger(__name__)
 
@@ -190,32 +191,29 @@ async def get_repository_documentation(repo_path: str) -> Dict[str, Any]:
         doc_files = []
         doc_dirs = {}
         
-        for dirpath, _, filenames in os.walk(cache_path):
-            dir_doc_count = 0
-            
-            for filename in filenames:
-                filepath = os.path.join(dirpath, filename)
+        # Get all non-ignored files using RepoFilter
+        repo_filter = RepoFilter(Path(cache_path))
+        all_files = repo_filter.find_all_files()
+        
+        # Process files for documentation
+        for filepath in all_files:
+            # Apply checks to identify doc files
+            if is_likely_doc_file(filepath, config):
+                rel_path = os.path.relpath(filepath, start=cache_path)
+                dir_path = os.path.dirname(rel_path)
                 
-                # Apply checks to identify doc files
-                if is_likely_doc_file(filepath, config):
-                    rel_path = os.path.relpath(filepath, start=cache_path)
-                    
-                    # Get format and category
-                    doc_format = get_doc_format(filepath, config)
-                    category = categorize_doc_file(rel_path, config)
-                    
-                    doc_files.append({
-                        "path": rel_path,
-                        "category": category,
-                        "format": doc_format
-                    })
-                    
-                    dir_doc_count += 1
-            
-            # Track directory info
-            if dir_doc_count > 0:
-                rel_dir = os.path.relpath(dirpath, start=cache_path)
-                doc_dirs[rel_dir] = dir_doc_count
+                # Get format and category
+                doc_format = get_doc_format(filepath, config)
+                category = categorize_doc_file(rel_path, config)
+                
+                doc_files.append({
+                    "path": rel_path,
+                    "category": category,
+                    "format": doc_format
+                })
+                
+                # Update directory counts
+                doc_dirs[dir_path] = doc_dirs.get(dir_path, 0) + 1
         
         # Calculate statistics
         stats = calculate_stats(doc_files)

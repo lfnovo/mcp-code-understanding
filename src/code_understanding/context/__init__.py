@@ -1,5 +1,6 @@
 """Context package for RepoMap integration."""
 
-from .file_filter import FileFilter
+from .builder import RepoMapBuilder
+from .extractor import RepoMapExtractor
 
-__all__ = ["FileFilter"]
+__all__ = ["RepoMapBuilder", "RepoMapExtractor"]

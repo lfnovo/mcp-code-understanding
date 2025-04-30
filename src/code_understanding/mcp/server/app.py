@@ -48,7 +48,13 @@ def register_tools(
 
     @mcp_server.tool(
         name="get_repo_file_content",
-        description="Retrieve file contents or directory listings from a repository. For files, returns the complete file content. For directories, returns a non-recursive listing of immediate files and subdirectories.",
+        description="""Retrieve file contents or directory listings from a repository. For files, returns the complete file content. For directories, returns a non-recursive listing of immediate files and subdirectories.
+
+REQUIRED PARAMETER GUIDANCE:
+- repo_path: MUST match the exact format of the original input to clone_repo
+  - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
+  - If you cloned using a local directory path, you MUST use that identical local path here
+  - Mismatched formats will result in 'Repository not found in cache' errors""",
     )
     async def get_repo_file_content(repo_path: str, resource_path: str) -> dict:
         """
@@ -85,7 +91,13 @@ def register_tools(
 
     @mcp_server.tool(
         name="refresh_repo",
-        description="Update a previously cloned repository in MCP's cache with latest changes and trigger reanalysis. Use this to ensure analysis is based on latest code.",
+        description="""Update a previously cloned repository in MCP's cache with latest changes and trigger reanalysis. Use this to ensure analysis is based on latest code.
+
+REQUIRED PARAMETER GUIDANCE:
+- repo_path: MUST match the exact format of the original input to clone_repo
+  - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
+  - If you cloned using a local directory path, you MUST use that identical local path here
+  - Mismatched formats will result in 'Repository not found in cache' errors""",
     )
     async def refresh_repo(repo_path: str) -> dict:
         """
@@ -177,36 +189,42 @@ def register_tools(
         name="get_source_repo_map",
         description="""Retrieve a semantic analysis map of the repository's source code structure, including file hierarchy, functions, classes, and their relationships. Repository must be previously cloned via clone_repo.
 
-        RESPONSE CHARACTERISTICS:
-        1. Status Types:
-        - "threshold_exceeded": Indicates analysis scope exceeds processing limits
-        - "building": Analysis in progress
-        - "waiting": Waiting for prerequisite operation
-        - "success": Analysis complete
-        - "error": Operation failed
+REQUIRED PARAMETER GUIDANCE:
+- repo_path: MUST match the exact format of the original input to clone_repo
+  - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
+  - If you cloned using a local directory path, you MUST use that identical local path here
+  - Mismatched formats will result in 'Repository not found in cache' errors
 
-        2. Resource Management:
-        - Repository size impacts processing time and token usage
-        - 'max_tokens' parameter provides approximate control of response size
-            Note: Actual token count may vary slightly above or below specified limit
-        - File count threshold exists to prevent overload
-        - Processing time scales with both file count and max_tokens
-            Important: Clients should adjust their timeout values proportionally when:
-            * Analyzing larger numbers of files
-            * Specifying higher max_tokens values
-            * Working with complex repositories
+RESPONSE CHARACTERISTICS:
+1. Status Types:
+- "threshold_exceeded": Indicates analysis scope exceeds processing limits
+- "building": Analysis in progress
+- "waiting": Waiting for prerequisite operation
+- "success": Analysis complete
+- "error": Operation failed
 
-        3. Scope Control Options:
-        - 'files': Analyze specific files (useful for targeted analysis)
-        - 'directories': Analyze specific directories
-        - Both parameters support gradual exploration of large codebases
+2. Resource Management:
+- Repository size impacts processing time and token usage
+- 'max_tokens' parameter provides approximate control of response size
+    Note: Actual token count may vary slightly above or below specified limit
+- File count threshold exists to prevent overload
+- Processing time scales with both file count and max_tokens
+    Important: Clients should adjust their timeout values proportionally when:
+    * Analyzing larger numbers of files
+    * Specifying higher max_tokens values
+    * Working with complex repositories
 
-        4. Response Metadata:
-        - Contains processing statistics and limitation details
-        - Provides override_guidance when thresholds are exceeded
-        - Reports excluded files and completion status
+3. Scope Control Options:
+- 'files': Analyze specific files (useful for targeted analysis)
+- 'directories': Analyze specific directories
+- Both parameters support gradual exploration of large codebases
 
-        NOTE: This tool supports both broad and focused analysis strategies. Response handling can be adapted based on specific use case requirements and user preferences.""",
+4. Response Metadata:
+- Contains processing statistics and limitation details
+- Provides override_guidance when thresholds are exceeded
+- Reports excluded files and completion status
+
+NOTE: This tool supports both broad and focused analysis strategies. Response handling can be adapted based on specific use case requirements and user preferences.""",
     )
     async def get_source_repo_map(
         repo_path: str,
@@ -263,20 +281,26 @@ def register_tools(
         name="get_repo_structure",
         description="""Retrieve directory structure and analyzable file counts for a repository to guide analysis decisions.
 
-        RESPONSE CHARACTERISTICS:
-        1. Directory Information:
-        - Lists directories containing analyzable source code
-        - Reports number of analyzable files per directory
-        - Shows directory hierarchy
-        - Indicates file extensions present in each location
+REQUIRED PARAMETER GUIDANCE:
+- repo_path: MUST match the exact format of the original input to clone_repo
+  - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
+  - If you cloned using a local directory path, you MUST use that identical local path here
+  - Mismatched formats will result in 'Repository not found in cache' errors
 
-        2. Usage:
-        - Requires repository to be previously cloned
-        - Helps identify main code directories
-        - Supports planning targeted analysis
-        - Shows where analyzable code is located
+RESPONSE CHARACTERISTICS:
+1. Directory Information:
+- Lists directories containing analyzable source code
+- Reports number of analyzable files per directory
+- Shows directory hierarchy
+- Indicates file extensions present in each location
 
-        NOTE: Use this tool to understand repository structure and choose which directories to analyze in detail."""
+2. Usage:
+- Requires repository to be previously cloned via clone_repo
+- Helps identify main code directories
+- Supports planning targeted analysis
+- Shows where analyzable code is located
+
+NOTE: Use this tool to understand repository structure and choose which directories to analyze in detail.""",
     )
     async def get_repo_structure(
         repo_path: str,
@@ -323,6 +347,12 @@ def register_tools(
     @mcp_server.tool(
         name="get_repo_critical_files",
         description="""Identify and analyze the most structurally significant files in a repository to guide code understanding efforts.
+
+REQUIRED PARAMETER GUIDANCE:
+- repo_path: MUST match the exact format of the original input to clone_repo
+  - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
+  - If you cloned using a local directory path, you MUST use that identical local path here
+  - Mismatched formats will result in 'Repository not found in cache' errors
 
 RESPONSE CHARACTERISTICS:
 1. Analysis Metrics:
@@ -410,7 +440,13 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
 
     @mcp_server.tool(
         name="get_repo_documentation",
-        description="Retrieve and analyze documentation files from a repository, including README files, API docs, design documents, and other documentation. Repository must be previously cloned via clone_repo.",
+        description="""Retrieve and analyze documentation files from a repository, including README files, API docs, design documents, and other documentation. Repository must be previously cloned via clone_repo.
+
+REQUIRED PARAMETER GUIDANCE:
+- repo_path: MUST match the exact format of the original input to clone_repo
+  - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
+  - If you cloned using a local directory path, you MUST use that identical local path here
+  - Mismatched formats will result in 'Repository not found in cache' errors""",
     )
     async def get_repo_documentation(repo_path: str) -> dict:
         """

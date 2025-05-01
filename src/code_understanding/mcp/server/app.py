@@ -477,9 +477,28 @@ server = create_mcp_server()
     default="stdio",
     help="Transport type (stdio or sse)",
 )
-def main(port: int, transport: str) -> int:
+@click.option(
+    "--cache-dir",
+    help="Directory to store repository cache",
+)
+@click.option(
+    "--max-cached-repos",
+    type=int,
+    help="Maximum number of cached repositories",
+)
+def main(port: int, transport: str, cache_dir: str = None, max_cached_repos: int = None) -> int:
     """Run the server with specified transport."""
     try:
+        # Create server with command line overrides
+        config = load_config()
+        if cache_dir:
+            config.repository.cache_dir = cache_dir
+        if max_cached_repos:
+            config.repository.max_cached_repos = max_cached_repos
+            
+        global server
+        server = create_mcp_server(config)
+        
         if transport == "stdio":
             asyncio.run(server.run_stdio_async())
         else:

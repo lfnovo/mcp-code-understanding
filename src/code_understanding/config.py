@@ -15,18 +15,6 @@ from platformdirs import user_config_dir
 
 
 @dataclass
-class IndexerConfig:
-    chunk_size: int = 1000
-    chunk_overlap: int = 200
-    embeddings_model: str = "all-MiniLM-L6-v2"
-    vector_db_path: str = "./vector_db"
-
-    def __post_init__(self):
-        # Expand ~ to home directory in vector_db_path
-        self.vector_db_path = os.path.expanduser(self.vector_db_path)
-
-
-@dataclass
 class DocumentationConfig:
     include_tags: List[str] = None
     include_extensions: List[str] = None
@@ -63,60 +51,13 @@ class DocumentationConfig:
 
 
 @dataclass
-class TreeSitterConfig:
-    queries_path: str = "./src/code_understanding/treesitter/queries"
-    enabled_languages: List[str] = None
-
-    def __post_init__(self):
-        if self.enabled_languages is None:
-            self.enabled_languages = [
-                "python",
-                "javascript",
-                "typescript",
-                "java",
-                "go",
-            ]
-
-
-@dataclass
-class GitHubConfig:
-    api_token: Optional[str] = None
-
-
-@dataclass
 class RepositoryConfig:
     cache_dir: str = "./repo_cache"
-    refresh_interval: int = 3600  # seconds
     max_cached_repos: int = 50
-    github: Optional[GitHubConfig] = None
 
     def __post_init__(self):
-        if self.github is None:
-            self.github = GitHubConfig()
         # Expand ~ to home directory in cache_dir
         self.cache_dir = os.path.expanduser(self.cache_dir)
-
-
-@dataclass
-class ContextConfig:
-    summary_depth: int = 2
-    include_dependencies: bool = True
-    max_files_per_context: int = 10
-
-
-@dataclass
-class ParserConfig:
-    enabled_languages: List[str] = None
-
-    def __post_init__(self):
-        if self.enabled_languages is None:
-            self.enabled_languages = [
-                "python",
-                "javascript",
-                "typescript",
-                "java",
-                "go",
-            ]
 
 
 @dataclass
@@ -126,23 +67,11 @@ class ServerConfig:
     host: str = "localhost"
     port: int = 8080
     repository: RepositoryConfig = None
-    context: ContextConfig = None
-    parser: ParserConfig = None
-    indexer: IndexerConfig = None
-    treesitter: TreeSitterConfig = None
     documentation: DocumentationConfig = None
 
     def __post_init__(self):
         if self.repository is None:
             self.repository = RepositoryConfig()
-        if self.context is None:
-            self.context = ContextConfig()
-        if self.parser is None:
-            self.parser = ParserConfig()
-        if self.indexer is None:
-            self.indexer = IndexerConfig()
-        if self.treesitter is None:
-            self.treesitter = TreeSitterConfig()
         if self.documentation is None:
             self.documentation = DocumentationConfig()
 
@@ -203,8 +132,8 @@ def get_config_search_paths() -> List[str]:
     return paths
 
 
-def load_config(config_path: str = None) -> ServerConfig:
-    """Load configuration from YAML file."""
+def _load_base_config(config_path: str = None) -> ServerConfig:
+    """Internal function to load the base configuration from YAML file."""
     logger = logging.getLogger(__name__)
 
     # Always ensure default config exists first
@@ -232,28 +161,52 @@ def load_config(config_path: str = None) -> ServerConfig:
 
             # Convert nested dictionaries to appropriate config objects
             if "repository" in config_data and isinstance(config_data["repository"], dict):
-                github_config = None
-                if "github" in config_data["repository"]:
-                    github_config = GitHubConfig(**config_data["repository"].pop("github"))
-                config_data["repository"] = RepositoryConfig(**config_data["repository"], github=github_config)
-
-            if "context" in config_data and isinstance(config_data["context"], dict):
-                config_data["context"] = ContextConfig(**config_data["context"])
-
-            if "parser" in config_data and isinstance(config_data["parser"], dict):
-                config_data["parser"] = ParserConfig(**config_data["parser"])
-
-            if "indexer" in config_data and isinstance(config_data["indexer"], dict):
-                config_data["indexer"] = IndexerConfig(**config_data["indexer"])
-
-            if "treesitter" in config_data and isinstance(config_data["treesitter"], dict):
-                config_data["treesitter"] = TreeSitterConfig(**config_data["treesitter"])
+                config_data["repository"] = RepositoryConfig(**config_data["repository"])
 
             if "documentation" in config_data and isinstance(config_data["documentation"], dict):
                 config_data["documentation"] = DocumentationConfig(**config_data["documentation"])
 
-            return ServerConfig(**config_data)
+            config = ServerConfig(**config_data)
+            logger.debug("Base configuration loaded:")
+            logger.debug(f"  Server Name: {config.name}")
+            logger.debug(f"  Log Level: {config.log_level}")
+            logger.debug(f"  Repository:")
+            logger.debug(f"    Cache Directory: {config.repository.cache_dir}")
+            logger.debug(f"    Max Cached Repos: {config.repository.max_cached_repos}")
+            return config
 
     # If we get here, something went wrong with creating/reading the config
     logger.error(f"Failed to load or create config in: {', '.join(search_paths)}")
     return ServerConfig()
+
+
+def load_config(config_path: str = None, overrides: dict = None) -> ServerConfig:
+    """Load configuration from YAML file with optional overrides."""
+    logger = logging.getLogger(__name__)
+    
+    # Load base config
+    config = _load_base_config(config_path)
+    
+    # Apply any overrides
+    if overrides:
+        logger.debug("Applying configuration overrides:")
+        if 'repository' in overrides:
+            repo_overrides = overrides['repository']
+            if 'cache_dir' in repo_overrides:
+                old_cache_dir = config.repository.cache_dir
+                config.repository.cache_dir = os.path.expanduser(repo_overrides['cache_dir'])
+                logger.debug(f"  Repository cache_dir override: {old_cache_dir} -> {config.repository.cache_dir}")
+            if 'max_cached_repos' in repo_overrides:
+                old_max_repos = config.repository.max_cached_repos
+                config.repository.max_cached_repos = repo_overrides['max_cached_repos']
+                logger.debug(f"  Repository max_cached_repos override: {old_max_repos} -> {config.repository.max_cached_repos}")
+    
+    # Log final configuration
+    logger.info("Final configuration values:")
+    logger.info(f"  Server Name: {config.name}")
+    logger.info(f"  Log Level: {config.log_level}")
+    logger.info(f"  Repository:")
+    logger.info(f"    Cache Directory: {config.repository.cache_dir}")
+    logger.info(f"    Max Cached Repos: {config.repository.max_cached_repos}")
+    
+    return config

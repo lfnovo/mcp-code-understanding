@@ -3,38 +3,7 @@ log_level: "debug"
 
 repository:
   cache_dir: "~/.cache/mcp-code-understanding"
-  refresh_interval: 3600 # seconds
   max_cached_repos: 2
-  github:
-    api_token: null # Set via environment variable MCP_GITHUB_TOKEN
-
-context:
-  summary_depth: 2
-  include_dependencies: true
-  max_files_per_context: 10
-
-parser:
-  enabled_languages:
-    - python
-    - javascript
-    - typescript
-    - java
-    - go
-
-indexer:
-  chunk_size: 1000
-  chunk_overlap: 200
-  embeddings_model: "all-MiniLM-L6-v2"
-  vector_db_path: "./vector_db"
-
-treesitter:
-  queries_path: "./src/code_understanding/treesitter/queries"
-  enabled_languages:
-    - python
-    - javascript
-    - typescript
-    - java
-    - go
 
 documentation:
   include_tags:

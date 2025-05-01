@@ -3,35 +3,38 @@ log_level: "debug"
 
 repository:
   cache_dir: "./repo_cache"
-  refresh_interval: 3600 # seconds
   max_cached_repos: 2
-  github:
-    api_token: null # Set via environment variable MCP_GITHUB_TOKEN
 
-context:
-  summary_depth: 2
-  include_dependencies: true
-  max_files_per_context: 10
-
-parser:
-  enabled_languages:
-    - python
-    - javascript
-    - typescript
-    - java
-    - go
-
-indexer:
-  chunk_size: 1000
-  chunk_overlap: 200
-  embeddings_model: "all-MiniLM-L6-v2"
-  vector_db_path: "./vector_db"
-
-treesitter:
-  queries_path: "./src/code_understanding/treesitter/queries"
-  enabled_languages:
-    - python
-    - javascript
-    - typescript
-    - java
-    - go
+documentation:
+  include_tags:
+    - markdown
+    - rst
+    - adoc
+  include_extensions:
+    - .md
+    - .markdown
+    - .rst
+    - .txt
+    - .adoc
+    - .ipynb
+  format_mapping:
+    tag:markdown: markdown
+    tag:rst: restructuredtext
+    tag:adoc: asciidoc
+    ext:.md: markdown
+    ext:.markdown: markdown
+    ext:.rst: restructuredtext
+    ext:.txt: plaintext
+    ext:.adoc: asciidoc
+    ext:.ipynb: jupyter
+  category_patterns:
+    readme: 
+      - readme
+    api: 
+      - api
+    documentation:
+      - docs
+      - documentation
+    examples:
+      - examples
+      - sample

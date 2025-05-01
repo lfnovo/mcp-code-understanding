@@ -4,82 +4,162 @@ An MCP (Model Context Protocol) server designed to understand codebases and prov
 
 ## Features
 
-- **Repository Management**
-  - Support for both local and remote Git repositories
-  - Efficient repository caching system
-  - Automatic background analysis of cloned repositories
-  - Repository refresh capabilities to stay in sync with source
+- Clone and analyze GitHub repositories or local codebases
+- Get repository structure and file organization
+- Identify critical files based on complexity metrics and code structure
+- Generate detailed repository maps showing:
+  - Function signatures and relationships
+  - Class definitions and hierarchies
+  - Code structure and dependencies
+- Retrieve and analyze repository documentation
+- Target analysis to specific files or directories
+- Keep analysis up-to-date with repository changes via refresh
 
-- **Code Analysis**
-  - Semantic analysis of code structure and relationships
-  - Critical file identification using complexity metrics
-  - Directory structure analysis
-  - Documentation discovery and categorization
-  - Support for targeted analysis of specific files/directories
+## Quick Start: MCP Client Configuration
 
-- **Resource Management**
-  - Configurable repository cache limits
-  - Token-aware analysis for large codebases
-  - Background processing for intensive operations
-  - Progress tracking for long-running tasks
+To use this server with your MCP client, add the following configuration to your MCP client's configuration file:
 
-## Prerequisites
-
-- **Python 3.11 or 3.12**: Required for both development and usage
-  ```bash
-  # Verify your Python version
-  python --version
-  # or
-  python3 --version
-  ```
-- **UV Package Manager**: The modern Python package installer
-  ```bash
-  # Install UV
-  curl -sSf https://astral.sh/uv/install.sh | sh
-  ```
-
-## Installation
-
-### For End Users
-
-Install and run the application globally:
-
-```bash
-# Install the package globally
-uv pip install --system mcp-code-understanding
-
-# Run the application
-mcp-code-understanding
+```json
+{
+  "mcpServers": {
+    "code-understanding": {
+      "command": "uvx",
+      "args": [
+        "code-understanding-mcp-server"
+      ]
+    }
+  }
+}
 ```
 
-### For Developers
+That's it! The server will be automatically downloaded and run when needed by your MCP client.
 
-To contribute or run this project locally:
+## Why Use this MCP Server?
 
-```bash
-# 1. Clone the repository
-git clone https://github.com/yourusername/mcp-code-understanding.git
-cd mcp-code-understanding
+# MCP Code Understanding Server
 
-# 2. Create virtual environment
-uv venv
+## Value Proposition
 
-# 3. Install dependencies (editable mode with dev extras)
-uv pip install -e ".[dev]"
+The MCP Code Understanding Server empowers AI assistants with comprehensive code comprehension capabilities, enabling them to provide more accurate, contextual, and practical assistance with software development tasks. By creating a semantic bridge between repositories and AI systems, this server dramatically reduces the time and friction involved in code exploration, analysis, and implementation guidance.
 
-# 4. Activate virtual environment
-source .venv/bin/activate
+## Common Use Cases
 
-# 5. Run tests
-pytest
+### Reference Repository Analysis
+- Examine external repositories (libraries, dependencies, etc.) to inform current development
+- Find implementation patterns and examples in open-source projects
+- Understand how specific libraries work internally when documentation is insufficient
+- Compare implementation approaches across similar projects
+- Identify best practices from high-quality codebases
 
-# 6. Run the application
-mcp-code-understanding
+### Knowledge Extraction and Documentation
+- Generate comprehensive documentation for poorly documented codebases
+- Create architectural overviews and component relationship diagrams
+- Develop progressive learning paths for developer onboarding
+- Extract business logic and domain knowledge embedded in code
+- Identify and document system integration points and dependencies
+
+### Codebase Assessment and Improvement
+- Analyze technical debt and prioritize refactoring efforts
+- Identify security vulnerabilities and compliance issues
+- Assess test coverage and quality
+- Detect dead code, duplicated logic, and optimization opportunities
+- Evaluate implementation against design patterns and architectural principles
+
+### Legacy System Understanding
+- Recover knowledge from systems with minimal documentation
+- Support migration planning by understanding system boundaries
+- Analyze complex dependencies before making changes
+- Trace feature implementations across multiple components
+- Understand historical design decisions and their rationales
+
+### Cross-Project Knowledge Transfer
+- Apply patterns from one project to another
+- Bridge knowledge gaps between teams working on related systems
+- Identify reusable components across multiple projects
+- Understand differences in implementation approaches between teams
+- Facilitate knowledge sharing in distributed development environments
+
+For detailed examples of how the MCP Code Understanding Server can be used in real-world scenarios, see our [Example Scenarios](docs/Code_Understanding_Scenarios.md) document. It includes step-by-step walkthroughs of:
+- Accelerating developer onboarding to a complex codebase
+- Planning and executing API migrations
+- Conducting security vulnerability assessments
+
+## How It Works
+
+The MCP Code Understanding Server processes repositories through a series of analysis steps:
+
+1. **Repository Cloning**: The server clones the target repository into its cache
+2. **Structure Analysis**: Analysis of directories, files, and their organization
+3. **Critical File Identification**: Determination of structurally significant components
+4. **Documentation Retrieval**: Collection of all documentation files
+5. **Semantic Mapping**: Creation of a detailed map showing relationships between components
+6. **Content Analysis**: Examination of specific files as needed for deeper understanding
+
+AI assistants integrate with the server by making targeted requests for each analytical stage, building a comprehensive understanding of the codebase that can be used to address specific user questions and needs.
+
+## Design Considerations for Large Codebases
+
+The server employs several strategies to maintain performance and usability even with enterprise-scale repositories:
+
+- **Asynchronous Processing**: Repository cloning and analysis occur in background threads, providing immediate feedback while deeper analysis continues
+- **Progressive Analysis**: Initial quick analysis enables immediate interaction, with more detailed understanding building over time
+- **Scope Control**: Parameters for `max_tokens`, `files`, and `directories` enable targeted analysis of specific areas of interest
+- **Threshold Management**: Automatic detection of repository size with appropriate guidance for analysis strategies
+- **Hierarchical Understanding**: Repository structure is analyzed first, enabling intelligent prioritization of critical components for deeper semantic analysis
+
+These design choices ensure that developers can start working immediately with large codebases while the system builds a progressively deeper understanding in the background, striking an optimal balance between analysis depth and responsiveness.
+
+### GitHub Authentication (Optional)
+
+If you need to access private repositories or want to avoid GitHub API rate limits, add your GitHub token to the configuration:
+
+```json
+{
+  "mcpServers": {
+    "code-understanding": {
+      "command": "uvx",
+      "args": [
+        "code-understanding-mcp-server"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-token-here"
+      }
+    }
+  }
+}
 ```
 
-## Configuration
+### Advanced Configuration Options
 
-### Base Configuration
+For advanced users, the server supports several configuration options:
+
+```json
+{
+  "mcpServers": {
+    "code-understanding": {
+      "command": "uvx",
+      "args": [
+        "code-understanding-mcp-server",
+        "--cache-dir", "~/custom-cache-dir",     // Override repository cache location
+        "--max-cached-repos", "20",              // Override maximum number of cached repos
+        "--transport", "stdio",                  // Transport type (stdio or sse)
+        "--port", "3001"                         // Port for SSE transport (only used with sse)
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-token-here"
+      }
+    }
+  }
+}
+```
+
+Available options:
+- `--cache-dir`: Override the repository cache directory location (default: ~/.cache/mcp-code-understanding)
+- `--max-cached-repos`: Set maximum number of cached repositories (default: 10)
+- `--transport`: Choose transport type (stdio or sse, default: stdio)
+- `--port`: Set port for SSE transport (default: 3001, only used with sse transport)
+
+## Server Configuration
 
 The server uses a `config.yaml` file for base configuration. This file is automatically created in the standard configuration directory (`~/.config/mcp-code-understanding/config.yaml`) when the server first runs. You can also place a `config.yaml` file in your current directory to override the default configuration.
 
@@ -91,7 +171,7 @@ log_level: "debug"
 
 repository:
   cache_dir: "~/.cache/mcp-code-understanding"
-  max_cached_repos: 2
+  max_cached_repos: 10
 
 documentation:
   include_tags:
@@ -128,160 +208,117 @@ documentation:
       - sample
 ```
 
-### GitHub Authentication
+## For Developers
 
-GitHub authentication is handled exclusively through environment variables. Set your GitHub Personal Access Token using:
+### Prerequisites
 
-```bash
-export GITHUB_PERSONAL_ACCESS_TOKEN="your-token-here"
-```
+- **Python 3.11 or 3.12**: Required for both development and usage
+  ```bash
+  # Verify your Python version
+  python --version
+  # or
+  python3 --version
+  ```
+- **UV Package Manager**: The modern Python package installer
+  ```bash
+  # Install UV
+  curl -sSf https://astral.sh/uv/install.sh | sh
+  ```
 
-## MCP Tools and Usage
+### Development Setup
 
-The server provides the following MCP tools for code understanding:
-
-### 1. Repository Management
-
-#### clone_repo
-Clones a repository and builds a comprehensive repository map in the background. This map is a critical component that:
-- Analyzes and indexes all source files
-- Extracts function signatures, class definitions, and their relationships
-- Maps the codebase structure and dependencies
-- Enables semantic understanding of the code
-
-This background analysis is essential for all other analysis tools to function properly.
-
-```python
-response = await clone_repo(
-    url="https://github.com/user/repo",  # Repository URL or local path
-    branch="main"  # Optional: specific branch
-)
-```
-
-#### refresh_repo
-Updates a previously cloned repository with latest changes and triggers a complete rebuild of the repository map:
-```python
-response = await refresh_repo(
-    repo_path="https://github.com/user/repo"  # Original repo URL/path
-)
-```
-
-### 2. Code Analysis
-
-#### get_source_repo_map
-Retrieves the repository map that was built during `clone_repo` or `refresh_repo`. This map contains the semantic analysis of your code's structure, including function signatures, class hierarchies, and code relationships:
-```python
-response = await get_source_repo_map(
-    repo_path="https://github.com/user/repo",
-    files=["src/main.py"],  # Optional: specific files
-    directories=["src/"],    # Optional: specific directories
-    max_tokens=10000        # Optional: limit response size
-)
-```
-
-#### get_repo_structure
-Analyzes repository directory structure:
-```python
-response = await get_repo_structure(
-    repo_path="https://github.com/user/repo",
-    directories=["src/"],    # Optional: limit to directories
-    include_files=True      # Optional: include file listings
-)
-```
-
-#### get_repo_critical_files
-Identifies structurally significant files:
-```python
-response = await get_repo_critical_files(
-    repo_path="https://github.com/user/repo",
-    files=None,             # Optional: specific files
-    directories=None,       # Optional: specific directories
-    limit=50,              # Optional: max results
-    include_metrics=True   # Optional: include detailed metrics
-)
-```
-
-#### get_repo_file_content
-Retrieves file contents or directory listings:
-```python
-response = await get_repo_file_content(
-    repo_path="https://github.com/user/repo",
-    resource_path="src/main.py"
-)
-```
-
-#### get_repo_documentation
-Analyzes repository documentation:
-```python
-response = await get_repo_documentation(
-    repo_path="https://github.com/user/repo"
-)
-```
-
-### Response Handling
-
-Most tools return responses with a consistent structure:
-```python
-{
-    "status": str,     # "success", "pending", "building", "error"
-    "content": dict,   # Tool-specific response data
-    "message": str,    # Optional status/error message
-    "metadata": dict   # Optional processing metadata
-}
-```
-
-### Best Practices
-
-1. **Repository Analysis Flow**:
-   - Start with `clone_repo` for initial setup
-   - Use `get_repo_structure` to understand codebase organization
-   - Identify key files with `get_repo_critical_files`
-   - Get detailed analysis with `get_source_repo_map`
-   - Access documentation with `get_repo_documentation`
-
-2. **Large Repository Handling**:
-   - Use directory/file filtering to analyze specific parts
-   - Set appropriate `max_tokens` limits
-   - Consider using `refresh_repo` for incremental updates
-   - Monitor status responses for long-running operations
-
-3. **Resource Management**:
-   - Configure `max_cached_repos` based on available storage
-   - Clean up unused repositories periodically
-   - Use targeted analysis for large codebases
-
-## Server Configuration
-
-When running the MCP server, several command-line options are available:
+To contribute or run this project locally:
 
 ```bash
-mcp-code-understanding [OPTIONS]
+# 1. Clone the repository
+git clone https://github.com/yourusername/mcp-code-understanding.git
+cd mcp-code-understanding
 
-Options:
-  --port INTEGER            Port to listen on for SSE (default: 3001)
-  --transport [stdio|sse]   Transport type (default: stdio)
-  --cache-dir TEXT         Directory to store repository cache
-  --max-cached-repos INT   Maximum number of cached repositories
-  --help                   Show this message and exit
+# 2. Create virtual environment
+uv venv
+
+# 3. Install dependencies (editable mode with dev extras)
+uv pip install -e ".[dev]"
+
+# 4. Activate virtual environment
+source .venv/bin/activate
+
+# 5. Set up pre-commit hooks
+pre-commit install
+
+# 6. Run tests
+uv run pytest
+
+# 7. Test the server using MCP inspector
+# Without GitHub authentication:
+uv run mcp dev src/code_understanding/mcp/server/app.py
+
+# With GitHub authentication (for testing private repos):
+GITHUB_PERSONAL_ACCESS_TOKEN=your_token_here uv run mcp dev src/code_understanding/mcp/server/app.py
 ```
 
-## Development
+This will launch an interactive console where you can test all MCP server endpoints directly.
 
-Run tests:
+### Development Tools
+
+The following development tools are available after installing with dev extras (`.[dev]`):
+
+Run tests with coverage:
 ```bash
-uv venv run pytest
+uv run pytest
 ```
 
-Format code:
+Format code (using black and isort):
 ```bash
-uv venv run black .
-uv venv run isort .
+# Format with black
+uv run black .
+
+# Sort imports
+uv run isort .
 ```
 
-Type checking:
+Type checking with mypy:
 ```bash
-uv venv run mypy .
+uv run mypy .
 ```
+
+All tools are configured via pyproject.toml with settings optimized for this project.
+
+### Publishing to PyPI
+
+When you're ready to publish a new version to PyPI, follow these steps:
+
+1. Update the version number in `pyproject.toml`:
+   ```bash
+   # Edit pyproject.toml and change the version field
+   # For example: version = "0.1.1"
+   ```
+
+2. Clean previous build artifacts:
+   ```bash
+   rm -rf dist/ build/ *.egg-info/
+   ```
+
+3. Build the distribution packages:
+   ```bash
+   uv run python -m build
+   ```
+
+4. Verify the built packages:
+   ```bash
+   ls dist/
+   ```
+
+5. Upload to PyPI (use TestPyPI first if unsure):
+   ```bash
+   # Install twine if you haven't already
+   uv pip install twine
+   
+   # For actual PyPI release:
+   uv run python -m twine upload dist/*
+   ```
+
+You'll need PyPI credentials configured or you'll be prompted to enter them during upload.
 
 ## License
 

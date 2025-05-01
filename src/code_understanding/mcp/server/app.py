@@ -1,6 +1,7 @@
 """
 Core MCP server implementation using FastMCP.
 """
+
 import logging
 import sys
 import asyncio
@@ -303,18 +304,16 @@ RESPONSE CHARACTERISTICS:
 NOTE: Use this tool to understand repository structure and choose which directories to analyze in detail.""",
     )
     async def get_repo_structure(
-        repo_path: str,
-        directories: List[str] = None,
-        include_files: bool = False
+        repo_path: str, directories: List[str] = None, include_files: bool = False
     ) -> dict:
         """
         Get repository structure information with optional file listings.
-        
+
         Args:
             repo_path: Path/URL matching what was provided to clone_repo
             directories: Optional list of directories to limit results to
             include_files: Whether to include list of files in response
-        
+
         Returns:
             dict: {
                 "status": str,
@@ -341,7 +340,7 @@ NOTE: Use this tool to understand repository structure and choose which director
             logger.error(f"Error getting repository structure: {e}", exc_info=True)
             return {
                 "status": "error",
-                "error": f"Failed to get repository structure: {str(e)}"
+                "error": f"Failed to get repository structure: {str(e)}",
             }
 
     @mcp_server.tool(
@@ -391,17 +390,17 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
     ) -> dict:
         """
         Analyze and identify the most structurally significant files in a codebase.
-        
+
         Uses code complexity metrics to calculate importance scores, helping identify
         files that are most critical for understanding the system's structure.
-        
+
         Args:
             repo_path: Path/URL matching what was provided to clone_repo
             files: Optional list of specific files to analyze
             directories: Optional list of specific directories to analyze
             limit: Maximum number of files to return (default: 50)
             include_metrics: Include detailed metrics in response (default: True)
-        
+
         Returns:
             dict: {
                 "status": str,  # "success", "error"
@@ -421,21 +420,24 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
         try:
             # Import and initialize the analyzer
             from code_understanding.analysis.complexity import CodeComplexityAnalyzer
+
             analyzer = CodeComplexityAnalyzer(repo_manager, repo_map_builder)
-            
+
             # Delegate to the specialized CodeComplexityAnalyzer module
             return await analyzer.analyze_repo_critical_files(
                 repo_path=repo_path,
                 files=files,
                 directories=directories,
                 limit=limit,
-                include_metrics=include_metrics
+                include_metrics=include_metrics,
             )
         except Exception as e:
-            logger.error(f"Unexpected error in get_repo_critical_files: {str(e)}", exc_info=True)
+            logger.error(
+                f"Unexpected error in get_repo_critical_files: {str(e)}", exc_info=True
+            )
             return {
                 "status": "error",
-                "error": f"An unexpected error occurred: {str(e)}"
+                "error": f"An unexpected error occurred: {str(e)}",
             }
 
     @mcp_server.tool(
@@ -451,7 +453,7 @@ REQUIRED PARAMETER GUIDANCE:
     async def get_repo_documentation(repo_path: str) -> dict:
         """
         Retrieve and analyze repository documentation files.
-        
+
         Searches for and analyzes documentation within the repository, including:
         - README files
         - API documentation
@@ -459,10 +461,10 @@ REQUIRED PARAMETER GUIDANCE:
         - User guides
         - Installation instructions
         - Other documentation files
-        
+
         Args:
             repo_path (str): Path or URL matching what was originally provided to clone_repo
-        
+
         Returns:
             dict: Documentation analysis results with format:
                 {
@@ -494,10 +496,12 @@ REQUIRED PARAMETER GUIDANCE:
             # Call documentation backend module (thin endpoint)
             return await get_repository_documentation(repo_path)
         except Exception as e:
-            logger.error(f"Error retrieving repository documentation: {e}", exc_info=True)
+            logger.error(
+                f"Error retrieving repository documentation: {e}", exc_info=True
+            )
             return {
                 "status": "error",
-                "message": f"Failed to retrieve repository documentation: {str(e)}"
+                "message": f"Failed to retrieve repository documentation: {str(e)}",
             }
 
 
@@ -522,7 +526,9 @@ server = create_mcp_server()
     type=int,
     help="Maximum number of cached repositories",
 )
-def main(port: int, transport: str, cache_dir: str = None, max_cached_repos: int = None) -> int:
+def main(
+    port: int, transport: str, cache_dir: str = None, max_cached_repos: int = None
+) -> int:
     """Run the server with specified transport."""
     try:
         # Create server with command line overrides
@@ -531,10 +537,10 @@ def main(port: int, transport: str, cache_dir: str = None, max_cached_repos: int
             config.repository.cache_dir = cache_dir
         if max_cached_repos:
             config.repository.max_cached_repos = max_cached_repos
-            
+
         global server
         server = create_mcp_server(config)
-        
+
         if transport == "stdio":
             asyncio.run(server.run_stdio_async())
         else:

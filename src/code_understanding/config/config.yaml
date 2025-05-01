@@ -3,7 +3,7 @@ log_level: "debug"
 
 repository:
   cache_dir: "~/.cache/mcp-code-understanding"
-  max_cached_repos: 2
+  max_cached_repos: 10
 
 documentation:
   include_tags:

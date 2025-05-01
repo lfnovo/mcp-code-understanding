@@ -1,4 +1,5 @@
 """Code Understanding MCP package."""
+
 import asyncio
 import logging
 import sys
@@ -7,9 +8,10 @@ from .server.app import server, create_mcp_server
 __version__ = "0.1.0"
 __all__ = ["server", "create_mcp_server"]
 
+
 def main(transport: str = "stdio"):
     """Entry point for MCP server.
-    
+
     Args:
         transport: Transport mode to use ("sse" or "stdio")
     """
@@ -24,6 +26,7 @@ def main(transport: str = "stdio"):
     except Exception as e:
         logger.error(f"Failed to start server: {e}", exc_info=True)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

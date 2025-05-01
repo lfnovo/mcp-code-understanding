@@ -26,7 +26,14 @@ class DocumentationConfig:
         if self.include_tags is None:
             self.include_tags = ["markdown", "rst", "adoc"]
         if self.include_extensions is None:
-            self.include_extensions = [".md", ".markdown", ".rst", ".txt", ".adoc", ".ipynb"]
+            self.include_extensions = [
+                ".md",
+                ".markdown",
+                ".rst",
+                ".txt",
+                ".adoc",
+                ".ipynb",
+            ]
         if self.format_mapping is None:
             self.format_mapping = {
                 # Tag-based format mapping
@@ -39,14 +46,14 @@ class DocumentationConfig:
                 "ext:.rst": "restructuredtext",
                 "ext:.txt": "plaintext",
                 "ext:.adoc": "asciidoc",
-                "ext:.ipynb": "jupyter"
+                "ext:.ipynb": "jupyter",
             }
         if self.category_patterns is None:
             self.category_patterns = {
                 "readme": ["readme"],
                 "api": ["api"],
                 "documentation": ["docs", "documentation"],
-                "examples": ["examples", "sample"]
+                "examples": ["examples", "sample"],
             }
 
 
@@ -79,30 +86,32 @@ class ServerConfig:
 def ensure_default_config() -> None:
     """Ensure default config exists in the standard .config directory."""
     logger = logging.getLogger(__name__)
-    
+
     # Use ~/.config/mcp-code-understanding for both Linux and macOS
     config_dir = Path.home() / ".config" / "mcp-code-understanding"
     config_path = config_dir / "config.yaml"
-    
+
     if not config_path.exists():
         # Create parent directories if they don't exist
         config_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Copy default config from package
         try:
             # Try to find the config file relative to this file
             current_dir = Path(__file__).resolve().parent
             default_config_path = current_dir / "config" / "config.yaml"
-            
+
             if default_config_path.exists():
-                with open(default_config_path, 'r') as src:
+                with open(default_config_path, "r") as src:
                     default_config = src.read()
-                    with open(config_path, 'w') as dst:
+                    with open(config_path, "w") as dst:
                         dst.write(default_config)
                 logger.info(f"Created default configuration at {config_path}")
             else:
                 logger.error(f"Could not find default config at {default_config_path}")
-                raise FileNotFoundError(f"Default config not found at {default_config_path}")
+                raise FileNotFoundError(
+                    f"Default config not found at {default_config_path}"
+                )
         except Exception as e:
             logger.error(f"Failed to create default config: {e}")
             raise
@@ -111,24 +120,24 @@ def ensure_default_config() -> None:
 def get_config_search_paths() -> List[str]:
     """Get list of paths to search for config file."""
     paths = []
-    
+
     # Check if we're running from an installed package or in development mode
     # If __file__ is in a site-packages directory, we're running from an installed package
     if "site-packages" in __file__:
         # Installed mode - check standard location first
         config_dir = Path.home() / ".config" / "mcp-code-understanding"
         paths.append(str(config_dir / "config.yaml"))
-        
+
         # Fallback to current directory only for backward compatibility
         paths.append("./config.yaml")
     else:
         # Development mode - check current directory first
         paths.append("./config.yaml")
-        
+
         # Then check standard location
         config_dir = Path.home() / ".config" / "mcp-code-understanding"
         paths.append(str(config_dir / "config.yaml"))
-    
+
     return paths
 
 
@@ -160,11 +169,19 @@ def _load_base_config(config_path: str = None) -> ServerConfig:
             logger.debug(f"Loaded configuration data: {config_data}")
 
             # Convert nested dictionaries to appropriate config objects
-            if "repository" in config_data and isinstance(config_data["repository"], dict):
-                config_data["repository"] = RepositoryConfig(**config_data["repository"])
+            if "repository" in config_data and isinstance(
+                config_data["repository"], dict
+            ):
+                config_data["repository"] = RepositoryConfig(
+                    **config_data["repository"]
+                )
 
-            if "documentation" in config_data and isinstance(config_data["documentation"], dict):
-                config_data["documentation"] = DocumentationConfig(**config_data["documentation"])
+            if "documentation" in config_data and isinstance(
+                config_data["documentation"], dict
+            ):
+                config_data["documentation"] = DocumentationConfig(
+                    **config_data["documentation"]
+                )
 
             config = ServerConfig(**config_data)
             logger.debug("Base configuration loaded:")
@@ -183,24 +200,30 @@ def _load_base_config(config_path: str = None) -> ServerConfig:
 def load_config(config_path: str = None, overrides: dict = None) -> ServerConfig:
     """Load configuration from YAML file with optional overrides."""
     logger = logging.getLogger(__name__)
-    
+
     # Load base config
     config = _load_base_config(config_path)
-    
+
     # Apply any overrides
     if overrides:
         logger.debug("Applying configuration overrides:")
-        if 'repository' in overrides:
-            repo_overrides = overrides['repository']
-            if 'cache_dir' in repo_overrides:
+        if "repository" in overrides:
+            repo_overrides = overrides["repository"]
+            if "cache_dir" in repo_overrides:
                 old_cache_dir = config.repository.cache_dir
-                config.repository.cache_dir = os.path.expanduser(repo_overrides['cache_dir'])
-                logger.debug(f"  Repository cache_dir override: {old_cache_dir} -> {config.repository.cache_dir}")
-            if 'max_cached_repos' in repo_overrides:
+                config.repository.cache_dir = os.path.expanduser(
+                    repo_overrides["cache_dir"]
+                )
+                logger.debug(
+                    f"  Repository cache_dir override: {old_cache_dir} -> {config.repository.cache_dir}"
+                )
+            if "max_cached_repos" in repo_overrides:
                 old_max_repos = config.repository.max_cached_repos
-                config.repository.max_cached_repos = repo_overrides['max_cached_repos']
-                logger.debug(f"  Repository max_cached_repos override: {old_max_repos} -> {config.repository.max_cached_repos}")
-    
+                config.repository.max_cached_repos = repo_overrides["max_cached_repos"]
+                logger.debug(
+                    f"  Repository max_cached_repos override: {old_max_repos} -> {config.repository.max_cached_repos}"
+                )
+
     # Log final configuration
     logger.info("Final configuration values:")
     logger.info(f"  Server Name: {config.name}")
@@ -208,5 +231,5 @@ def load_config(config_path: str = None, overrides: dict = None) -> ServerConfig
     logger.info(f"  Repository:")
     logger.info(f"    Cache Directory: {config.repository.cache_dir}")
     logger.info(f"    Max Cached Repos: {config.repository.max_cached_repos}")
-    
+
     return config

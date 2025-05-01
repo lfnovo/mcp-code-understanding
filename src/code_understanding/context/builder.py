@@ -216,9 +216,7 @@ class RepoMapBuilder:
         """
         repo_filter = RepoFilter(Path(root_dir))
         files = repo_filter.find_source_files()
-        logger.debug(
-            f"Found {len(files)} files matching criteria in {root_dir}"
-        )
+        logger.debug(f"Found {len(files)} files matching criteria in {root_dir}")
         return sorted(files)
 
     async def gather_files_targeted(
@@ -380,7 +378,7 @@ class RepoMapBuilder:
                 else:
                     return {
                         "status": "error",
-                        "error": f"Repository has not been cloned. Please clone it first using clone_repo with URL: {repo_path}"
+                        "error": f"Repository has not been cloned. Please clone it first using clone_repo with URL: {repo_path}",
                     }
 
             # Then check repo map status
@@ -487,19 +485,16 @@ class RepoMapBuilder:
             }
 
     async def get_repo_structure(
-        self,
-        repo_path: str,
-        directories: List[str] = None,
-        include_files: bool = False
+        self, repo_path: str, directories: List[str] = None, include_files: bool = False
     ) -> Dict[str, Any]:
         """
         Get repository structure information with optional file listings.
-        
+
         Args:
             repo_path: Path/URL matching what was provided to clone_repo
             directories: Optional list of directories to limit results to
             include_files: Whether to include list of files in response
-        
+
         Returns:
             dict: Repository structure information with format:
                 {
@@ -521,30 +516,30 @@ class RepoMapBuilder:
         # Convert repo_path to absolute cache path
         cache_path = str(get_cache_path(self.cache.cache_dir, repo_path).resolve())
         logger.debug(f"Getting repo structure for {repo_path}")
-        
+
         # Check repository status, similar to get_repo_map_content but only checking clone status
         with self.cache._file_lock():
             metadata_dict = self.cache._read_metadata()
             if cache_path not in metadata_dict:
                 return {"status": "error", "error": "Repository not found in cache"}
-            
+
             metadata = metadata_dict[cache_path]
-            
-            # Check clone status only - unlike get_repo_map_content, we don't need to wait 
+
+            # Check clone status only - unlike get_repo_map_content, we don't need to wait
             # for repo map build to complete
             clone_status = metadata.clone_status
             if not clone_status or clone_status["status"] != "complete":
                 if clone_status and clone_status["status"] in ["cloning", "copying"]:
                     return {
                         "status": "waiting",
-                        "message": f"Repository clone is in progress. Please try again later."
+                        "message": f"Repository clone is in progress. Please try again later.",
                     }
                 else:
                     return {
                         "status": "error",
-                        "error": f"Repository has not been cloned. Please clone it first using clone_repo with URL: {repo_path}"
+                        "error": f"Repository has not been cloned. Please clone it first using clone_repo with URL: {repo_path}",
                     }
-        
+
         # Directory Scanning Setup
         try:
             # Use exactly the same file filtering logic as get_repo_map_content
@@ -556,53 +551,61 @@ class RepoMapBuilder:
             else:
                 # Full repository scan with the same filters
                 target_files = await self.gather_files(cache_path)
-            
-            logger.debug(f"Found {len(target_files)} analyzable files for structure analysis")
-            
+
+            logger.debug(
+                f"Found {len(target_files)} analyzable files for structure analysis"
+            )
+
             # File Analysis
             # Initialize structures to track directory data
             directory_data = {}
             total_analyzable_files = 0
-            
+
             # Process each file
             for file_path in target_files:
                 # Convert to path relative to repository root
-                rel_path = os.path.normpath(str(Path(file_path).relative_to(cache_path)))
-                
+                rel_path = os.path.normpath(
+                    str(Path(file_path).relative_to(cache_path))
+                )
+
                 # Extract directory and filename
                 dir_path = os.path.dirname(rel_path)
                 if dir_path == "":
                     dir_path = "."  # Root directory
-                
+
                 # Extract extension without dot
                 _, ext = os.path.splitext(rel_path)
-                ext = ext[1:] if ext.startswith('.') else ext
-                
+                ext = ext[1:] if ext.startswith(".") else ext
+
                 # Initialize directory data if not exists
                 if dir_path not in directory_data:
                     directory_data[dir_path] = {
                         "path": dir_path,
                         "analyzable_files": 0,
                         "extensions": {},
-                        "files": [] if include_files else None
+                        "files": [] if include_files else None,
                     }
-                
+
                 # Update counters
                 directory_data[dir_path]["analyzable_files"] += 1
                 if ext:
-                    directory_data[dir_path]["extensions"][ext] = directory_data[dir_path]["extensions"].get(ext, 0) + 1
-                
+                    directory_data[dir_path]["extensions"][ext] = (
+                        directory_data[dir_path]["extensions"].get(ext, 0) + 1
+                    )
+
                 # Optional File Listing
                 # Store full relative path (not just basename) if include_files is True
                 if include_files and directory_data[dir_path]["files"] is not None:
                     # Store the full relative path, ensuring format matches get_source_repo_map
                     directory_data[dir_path]["files"].append(rel_path)
-                
+
                 # Update total count
                 total_analyzable_files += 1
-            
-            logger.debug(f"Analyzed {total_analyzable_files} files across {len(directory_data)} directories")
-            
+
+            logger.debug(
+                f"Analyzed {total_analyzable_files} files across {len(directory_data)} directories"
+            )
+
             # Response Building
             # Transform directory_data into response format
             directories_list = []
@@ -610,25 +613,27 @@ class RepoMapBuilder:
                 directory_entry = {
                     "path": dir_info["path"],
                     "analyzable_files": dir_info["analyzable_files"],
-                    "extensions": dir_info["extensions"]
+                    "extensions": dir_info["extensions"],
                 }
-                
+
                 # Add files list only if include_files was True and files were collected
                 if include_files and dir_info["files"] is not None:
                     directory_entry["files"] = sorted(dir_info["files"])
-                
+
                 directories_list.append(directory_entry)
-            
+
             # Build final response
             return {
                 "status": "success",
                 "directories": directories_list,
-                "total_analyzable_files": total_analyzable_files
+                "total_analyzable_files": total_analyzable_files,
             }
-            
+
         except Exception as e:
-            logger.error(f"Error during repository structure analysis: {e}", exc_info=True)
+            logger.error(
+                f"Error during repository structure analysis: {e}", exc_info=True
+            )
             return {
-                "status": "error", 
-                "error": f"Failed to analyze repository structure: {str(e)}"
+                "status": "error",
+                "error": f"Failed to analyze repository structure: {str(e)}",
             }

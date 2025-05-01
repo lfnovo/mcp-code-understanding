@@ -1,0 +1,14 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+After any modifications to Python files, automatically run black and isort on the modified files to maintain consistent code formatting.
+
+File pattern matches: *.py
+
+Example:
+```bash
+black {file}
+isort {file}
+```

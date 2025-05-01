@@ -296,7 +296,10 @@ When you're ready to publish a new version to PyPI, follow these steps:
 
 2. Clean previous build artifacts:
    ```bash
-   rm -rf dist/ build/ *.egg-info/
+   # Remove previous distribution packages and build directories
+   rm -rf dist/ 2>/dev/null || true
+   rm -rf build/ 2>/dev/null || true
+   rm -rf src/*.egg-info/ 2>/dev/null || true
    ```
 
 3. Build the distribution packages:
@@ -314,7 +317,7 @@ When you're ready to publish a new version to PyPI, follow these steps:
    # Install twine if you haven't already
    uv pip install twine
    
-   # For actual PyPI release:
+   # For PyPI release:
    uv run python -m twine upload dist/*
    ```
 

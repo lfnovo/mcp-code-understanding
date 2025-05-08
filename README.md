@@ -17,6 +17,10 @@ An MCP (Model Context Protocol) server designed to understand codebases and prov
 
 ## Quick Start: MCP Client Configuration
 
+**Prerequisite: `uv` Installation**
+
+This server is launched using `uvx`, which is part of the `uv` Python package manager. If you don't already have `uv` installed, please install it first. You can find installation instructions in the "For Developers" section under "Prerequisites" below, or visit the official `uv` installation guide [astral.sh/uv](https://astral.sh/uv).
+
 To use this server with your MCP client, add the following configuration to your MCP client's configuration file:
 
 ```json

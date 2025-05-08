@@ -2,18 +2,17 @@
 Repository caching functionality.
 """
 
-from pathlib import Path
-from typing import Dict, Optional, Any, Set
-from dataclasses import dataclass
-import time
-from datetime import datetime
-import shutil
-import os
 import json
 import logging
-import fcntl
+import shutil
+import time
 from contextlib import contextmanager
-from filelock import FileLock
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional, Set
+
+import filelock
 
 logger = logging.getLogger(__name__)
 
@@ -40,34 +39,42 @@ class RepositoryCache:
     def __init__(
         self, cache_dir: Path, max_cached_repos: int = 50, cleanup_interval: int = 86400
     ):
-        # Expand ~ in cache_dir path
-        self.cache_dir = Path(os.path.expanduser(str(cache_dir)))
+        # cache_dir is now expected to be a Path object from RepositoryManager
+        self.cache_dir = cache_dir
         self.max_cached_repos = max_cached_repos
         self.cleanup_interval = cleanup_interval
         self.metadata_file = self.cache_dir / "metadata.json"
-        self.lock_file = self.cache_dir / "cache.lock"
+        # Define the primary lock file path. FileLock will append its own suffix or use this.
+        # Let's use a distinct name for the lock file that FileLock will manage.
+        self.actual_lock_file_path = str(self.cache_dir / "cache.fslock")
 
         # Create cache directory and lock file if they don't exist
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        if not self.lock_file.exists():
-            self.lock_file.touch()
+        # No need to manually touch self.lock_file for FileLock library itself,
+        # but the original code had self.lock_file = self.cache_dir / "cache.lock"
+        # and touched it. If other parts of the code use self.lock_file directly (they shouldn't for locking),
+        # this might need review. For now, we assume _file_lock is the sole mechanism.
+        # The old self.lock_file was just for fcntl to operate on an open file descriptor.
+        # FileLock manages its own lock file based on the path string.
 
     @contextmanager
     def _file_lock(self):
-        """File-based lock to handle concurrent operations"""
-        with open(self.lock_file, "r") as lock:
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)  # Make it non-blocking
+        """File-based lock to handle concurrent operations using the FileLock library."""
+        # timeout=0 means it will try to acquire the lock once and fail immediately if it can't.
+        # A very small positive timeout (e.g., 0.05 for 50ms) allows for extremely brief contention.
+        lock = filelock.FileLock(self.actual_lock_file_path, timeout=0.05)
+        try:
+            with lock: # This attempts to acquire the lock within the timeout
                 yield
-            except BlockingIOError:
-                # If we can't get the lock, read the metadata without locking
-                # This is safe because we're only reading
-                yield
-            finally:
-                try:
-                    fcntl.flock(lock, fcntl.LOCK_UN)
-                except BlockingIOError:
-                    pass  # We didn't get the lock, so nothing to unlock
+        except filelock.Timeout:
+            # If we can't get the lock, mirror the original behavior: yield anyway.
+            # This implies that operations under this lock can tolerate proceeding
+            # without the lock if it cannot be acquired immediately.
+            logger.warning(
+                f"Could not acquire file lock on {self.actual_lock_file_path} within timeout. "
+                "Proceeding without lock, as per original fallback behavior."
+            )
+            yield
 
     def _get_actual_repos(self) -> Set[str]:
         """Get set of actual repository paths on disk"""

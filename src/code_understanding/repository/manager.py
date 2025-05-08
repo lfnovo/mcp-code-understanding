@@ -3,22 +3,22 @@ Repository management and operations.
 """
 
 import asyncio
-from pathlib import Path
-from typing import Dict, Optional, Any, Union
-import time
-from datetime import datetime
-import shutil
 import logging
 import os
+import shutil
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional, Union
 from urllib.parse import urlparse
 
 import git
-from git.repo import Repo
 import pathspec
+from git.repo import Repo
 
 from ..config import RepositoryConfig
-from .path_utils import is_git_url, get_cache_path
 from .cache import RepositoryCache, RepositoryMetadata
+from .path_utils import get_cache_path, is_git_url
 
 logger = logging.getLogger(__name__)
 
@@ -116,9 +116,10 @@ class Repository:
 class RepositoryManager:
     def __init__(self, config: RepositoryConfig):
         self.config = config
-        # Expand ~ in cache_dir path
-        self.cache_dir = Path(os.path.expanduser(config.cache_dir))
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        # Use the new method from RepositoryConfig to get the cache directory path
+        self.cache_dir = config.get_cache_dir_path()
+        # The mkdir is now handled by get_cache_dir_path(), but keeping it here is also fine / doesn't harm.
+        # self.cache_dir.mkdir(parents=True, exist_ok=True) # This line can be removed if get_cache_dir_path always ensures existence
         self.repositories: Dict[str, Repository] = {}
         self.cache = RepositoryCache(self.cache_dir, config.max_cached_repos)
 

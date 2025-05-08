@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "code-understanding-mcp-server"
-version = "0.1.1"
+version = "0.1.5"
 description = "MCP server for code understanding and context generation"
 readme = "README.md"
 authors = [
@@ -37,7 +37,8 @@ dependencies = [
     "identify>=2.5.35",  # For reliable text file detection
     "lizard>=1.17.24",
     "debugpy>=1.8.1",  # For VS Code debugging support
-    "platformdirs>=4.2.0"
+    "platformdirs>=4.2.0",
+    "filelock>=3.12.0"
 ]
 
 [project.optional-dependencies]
@@ -52,7 +53,8 @@ dev = [
 ]
 
 [project.scripts]
-mcp-code-understanding = "code_understanding.mcp.server.app:main"
+# Align script name with the package name for simplicity with uvx
+code-understanding-mcp-server = "code_understanding.mcp.server.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

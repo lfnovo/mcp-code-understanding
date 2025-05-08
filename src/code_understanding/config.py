@@ -2,16 +2,17 @@
 Configuration management for the Code Understanding server.
 """
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import List, Optional, Dict
-import yaml
-import os
+import importlib.resources
 import logging
+import os
 import platform
 import shutil
-import importlib.resources
-from platformdirs import user_config_dir
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import yaml
+from platformdirs import user_cache_dir, user_config_dir
 
 
 @dataclass
@@ -59,12 +60,21 @@ class DocumentationConfig:
 
 @dataclass
 class RepositoryConfig:
-    cache_dir: str = "./repo_cache"
+    cache_dir: Optional[str] = (
+        None  # Path string from config or None for platform default
+    )
     max_cached_repos: int = 50
 
-    def __post_init__(self):
-        # Expand ~ to home directory in cache_dir
-        self.cache_dir = os.path.expanduser(self.cache_dir)
+    def get_cache_dir_path(self) -> Path:
+        app_name = "mcp-code-understanding"
+        if self.cache_dir:
+            # User-defined path from config/override
+            p = Path(self.cache_dir).expanduser().resolve()
+        else:
+            # Default to platform-specific dir
+            p = Path(user_cache_dir(app_name))
+        p.mkdir(parents=True, exist_ok=True)  # Ensure it exists
+        return p
 
 
 @dataclass
@@ -79,125 +89,201 @@ class ServerConfig:
     def __post_init__(self):
         if self.repository is None:
             self.repository = RepositoryConfig()
+        elif isinstance(self.repository, dict):  # Handle initialization from YAML
+            self.repository = RepositoryConfig(**self.repository)
         if self.documentation is None:
             self.documentation = DocumentationConfig()
+        elif isinstance(self.documentation, dict):  # Handle initialization from YAML
+            self.documentation = DocumentationConfig(**self.documentation)
 
 
 def ensure_default_config() -> None:
-    """Ensure default config exists in the standard .config directory."""
+    """Ensure default config exists in the standard platform-specific directory."""
     logger = logging.getLogger(__name__)
+    app_name = "mcp-code-understanding"
 
-    # Use ~/.config/mcp-code-understanding for both Linux and macOS
-    config_dir = Path.home() / ".config" / "mcp-code-understanding"
-    config_path = config_dir / "config.yaml"
+    # New platform-specific config directory
+    new_config_dir = Path(user_config_dir(app_name))
+    new_config_path = new_config_dir / "config.yaml"
 
-    if not config_path.exists():
-        # Create parent directories if they don't exist
-        config_dir.mkdir(parents=True, exist_ok=True)
+    # Old hardcoded config directory (Linux/macOS style)
+    old_config_dir_linux_mac = Path.home() / ".config" / app_name
+    old_config_path_linux_mac = old_config_dir_linux_mac / "config.yaml"
 
-        # Copy default config from package
+    # Migration logic
+    if old_config_path_linux_mac.exists() and not new_config_path.exists():
         try:
-            # Try to find the config file relative to this file
-            current_dir = Path(__file__).resolve().parent
-            default_config_path = current_dir / "config" / "config.yaml"
-
-            if default_config_path.exists():
-                with open(default_config_path, "r") as src:
-                    default_config = src.read()
-                    with open(config_path, "w") as dst:
-                        dst.write(default_config)
-                logger.info(f"Created default configuration at {config_path}")
-            else:
-                logger.error(f"Could not find default config at {default_config_path}")
-                raise FileNotFoundError(
-                    f"Default config not found at {default_config_path}"
-                )
+            logger.info(
+                f"Migrating configuration from {old_config_path_linux_mac} to {new_config_path}"
+            )
+            new_config_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(old_config_path_linux_mac, new_config_path)
+            logger.info(f"Successfully migrated configuration to {new_config_path}")
+            # Optionally, remove the old config file/directory after successful migration
+            # old_config_path_linux_mac.unlink()
+            # try:
+            #     old_config_dir_linux_mac.rmdir() # Only removes if empty
+            # except OSError:
+            #     logger.debug(f"Old config directory {old_config_dir_linux_mac} not empty, not removed.")
         except Exception as e:
-            logger.error(f"Failed to create default config: {e}")
+            logger.error(
+                f"Failed to migrate configuration from {old_config_path_linux_mac} to {new_config_path}: {e}"
+            )
+            # Proceed to create default if migration failed
+
+    if not new_config_path.exists():
+        new_config_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            # Try to find the config file relative to this file (package data)
+            # This assumes the default config.yaml is in a 'config' subdirectory relative to this file
+            # For installed packages, importlib.resources is more robust.
+            package_name = __name__.split(".")[0]  # Should be 'code_understanding'
+            default_config_resource = importlib.resources.files(package_name).joinpath(
+                "config/config.yaml"
+            )
+
+            if default_config_resource.is_file():
+                with importlib.resources.as_file(
+                    default_config_resource
+                ) as default_config_file_path:
+                    with open(default_config_file_path, "r") as src:
+                        default_config_content = src.read()
+                        with open(new_config_path, "w") as dst:
+                            dst.write(default_config_content)
+                logger.info(f"Created default configuration at {new_config_path}")
+            else:
+                # Fallback for development environments if importlib.resources doesn't find it easily
+                # This part might need adjustment based on your exact project structure for development
+                current_script_dir = Path(__file__).resolve().parent
+                fallback_default_config_path = (
+                    current_script_dir / "config" / "config.yaml"
+                )
+                if fallback_default_config_path.exists():
+                    with open(fallback_default_config_path, "r") as src:
+                        default_config_content = src.read()
+                        with open(new_config_path, "w") as dst:
+                            dst.write(default_config_content)
+                    logger.info(
+                        f"Created default configuration at {new_config_path} using fallback path."
+                    )
+                else:
+                    logger.error(
+                        f"Could not find default config using importlib.resources or fallback path: {fallback_default_config_path}"
+                    )
+                    raise FileNotFoundError(
+                        f"Default config not found (tried importlib.resources and {fallback_default_config_path})"
+                    )
+        except Exception as e:
+            logger.error(f"Failed to create default config at {new_config_path}: {e}")
             raise
 
 
-def get_config_search_paths() -> List[str]:
-    """Get list of paths to search for config file."""
-    paths = []
+def get_config_search_paths() -> List[Path]:
+    """Get list of paths to search for config file, prioritizing platform-specific."""
+    paths: List[Path] = []
+    app_name = "mcp-code-understanding"
 
-    # Check if we're running from an installed package or in development mode
-    # If __file__ is in a site-packages directory, we're running from an installed package
-    if "site-packages" in __file__:
-        # Installed mode - check standard location first
-        config_dir = Path.home() / ".config" / "mcp-code-understanding"
-        paths.append(str(config_dir / "config.yaml"))
+    # 1. Platform-specific configuration directory
+    platform_config_path = Path(user_config_dir(app_name)) / "config.yaml"
+    paths.append(platform_config_path)
 
-        # Fallback to current directory only for backward compatibility
-        paths.append("./config.yaml")
-    else:
-        # Development mode - check current directory first
-        paths.append("./config.yaml")
+    # 2. Current working directory (for development override or local config)
+    paths.append(Path("./config.yaml").resolve())
 
-        # Then check standard location
-        config_dir = Path.home() / ".config" / "mcp-code-understanding"
-        paths.append(str(config_dir / "config.yaml"))
+    # 3. Old hardcoded path (for backward compatibility during transition, lower priority)
+    # This helps if migration hasn't run or if user explicitly placed it there.
+    old_config_path_linux_mac = Path.home() / ".config" / app_name / "config.yaml"
+    paths.append(old_config_path_linux_mac)
 
     return paths
 
 
-def _load_base_config(config_path: str = None) -> ServerConfig:
+def _load_base_config(config_path_override: Optional[str] = None) -> ServerConfig:
     """Internal function to load the base configuration from YAML file."""
     logger = logging.getLogger(__name__)
 
     # Always ensure default config exists first
     ensure_default_config()
 
-    # If config_path is explicitly provided, only try that one
-    if config_path:
-        search_paths = [config_path]
+    # If config_path_override is explicitly provided, only try that one
+    if config_path_override:
+        search_paths = [Path(config_path_override).resolve()]
     else:
         search_paths = get_config_search_paths()
 
     # Try each path in order
-    for path in search_paths:
-        abs_path = os.path.abspath(path)
-        if os.path.exists(abs_path):
-            logger.info(f"Loading configuration from {abs_path}")
-            with open(abs_path, "r") as f:
-                config_data = yaml.safe_load(f)
+    for path_obj in search_paths:
+        # Convert Path object to string for os.path.exists if needed, or use path_obj.exists()
+        # Standardizing to path_obj.exists() and path_obj.is_file()
+        if path_obj.exists() and path_obj.is_file():
+            logger.info(f"Loading configuration from {path_obj}")
+            try:
+                with open(path_obj, "r") as f:
+                    config_data = yaml.safe_load(f)
 
-            if not config_data:
-                logger.warning(f"Config file {abs_path} is empty, trying next location")
+                if not config_data:  # Handles empty YAML
+                    logger.warning(
+                        f"Config file {path_obj} is empty, trying next location."
+                    )
+                    continue
+
+                logger.debug(f"Loaded configuration data: {config_data}")
+
+                # Convert nested dictionaries to appropriate config objects
+                repo_conf_data = config_data.get("repository")
+                if repo_conf_data and isinstance(repo_conf_data, dict):
+                    config_data["repository"] = RepositoryConfig(**repo_conf_data)
+                elif (
+                    repo_conf_data is None
+                ):  # Ensure RepositoryConfig is always present
+                    config_data["repository"] = RepositoryConfig()
+
+                doc_conf_data = config_data.get("documentation")
+                if doc_conf_data and isinstance(doc_conf_data, dict):
+                    config_data["documentation"] = DocumentationConfig(**doc_conf_data)
+                elif (
+                    doc_conf_data is None
+                ):  # Ensure DocumentationConfig is always present
+                    config_data["documentation"] = DocumentationConfig()
+
+                # Ensure ServerConfig always has repository and documentation objects
+                # even if they were not in the yaml file at all
+                final_config = ServerConfig(**config_data)
+                if final_config.repository is None:
+                    final_config.repository = RepositoryConfig()
+                if final_config.documentation is None:
+                    final_config.documentation = DocumentationConfig()
+
+                logger.debug("Base configuration loaded:")
+                logger.debug(f"  Server Name: {final_config.name}")
+                logger.debug(f"  Log Level: {final_config.log_level}")
+                if final_config.repository:
+                    logger.debug(
+                        f"  Repository Config Object: {final_config.repository}"
+                    )
+                    # Use the method to get the actual cache dir path
+                    cache_dir_to_log = final_config.repository.get_cache_dir_path()
+                    logger.debug(f"    Cache Directory: {cache_dir_to_log}")
+                    logger.debug(
+                        f"    Max Cached Repos: {final_config.repository.max_cached_repos}"
+                    )
+                return final_config
+            except Exception as e:
+                logger.error(f"Error loading configuration from {path_obj}: {e}")
+                # Optionally continue to next search path or raise, depending on desired strictness
                 continue
 
-            logger.debug(f"Loaded configuration data: {config_data}")
-
-            # Convert nested dictionaries to appropriate config objects
-            if "repository" in config_data and isinstance(
-                config_data["repository"], dict
-            ):
-                config_data["repository"] = RepositoryConfig(
-                    **config_data["repository"]
-                )
-
-            if "documentation" in config_data and isinstance(
-                config_data["documentation"], dict
-            ):
-                config_data["documentation"] = DocumentationConfig(
-                    **config_data["documentation"]
-                )
-
-            config = ServerConfig(**config_data)
-            logger.debug("Base configuration loaded:")
-            logger.debug(f"  Server Name: {config.name}")
-            logger.debug(f"  Log Level: {config.log_level}")
-            logger.debug(f"  Repository:")
-            logger.debug(f"    Cache Directory: {config.repository.cache_dir}")
-            logger.debug(f"    Max Cached Repos: {config.repository.max_cached_repos}")
-            return config
-
-    # If we get here, something went wrong with creating/reading the config
-    logger.error(f"Failed to load or create config in: {', '.join(search_paths)}")
+    logger.error(
+        f"Failed to load or create config from search paths: {[str(p) for p in search_paths]}"
+    )
+    # Fallback to a default ServerConfig if all else fails
+    logger.info("Returning default ServerConfig as fallback.")
     return ServerConfig()
 
 
-def load_config(config_path: str = None, overrides: dict = None) -> ServerConfig:
+def load_config(
+    config_path: Optional[str] = None, overrides: Optional[Dict] = None
+) -> ServerConfig:
     """Load configuration from YAML file with optional overrides."""
     logger = logging.getLogger(__name__)
 
@@ -207,29 +293,56 @@ def load_config(config_path: str = None, overrides: dict = None) -> ServerConfig
     # Apply any overrides
     if overrides:
         logger.debug("Applying configuration overrides:")
-        if "repository" in overrides:
+        if "name" in overrides:
+            config.name = overrides["name"]
+        if "log_level" in overrides:
+            config.log_level = overrides["log_level"]
+        # ... other direct ServerConfig attribute overrides
+
+        if "repository" in overrides and overrides["repository"] is not None:
             repo_overrides = overrides["repository"]
-            if "cache_dir" in repo_overrides:
-                old_cache_dir = config.repository.cache_dir
-                config.repository.cache_dir = os.path.expanduser(
-                    repo_overrides["cache_dir"]
-                )
+            if (
+                config.repository is None
+            ):  # Should be initialized by _load_base_config or ServerConfig.__post_init__
+                config.repository = RepositoryConfig()
+
+            if (
+                "cache_dir" in repo_overrides
+                and repo_overrides["cache_dir"] is not None
+            ):
+                # Store the override string; get_cache_dir_path() will resolve it
+                config.repository.cache_dir = repo_overrides["cache_dir"]
                 logger.debug(
-                    f"  Repository cache_dir override: {old_cache_dir} -> {config.repository.cache_dir}"
+                    f"  Repository cache_dir override set to: {config.repository.cache_dir}"
                 )
-            if "max_cached_repos" in repo_overrides:
-                old_max_repos = config.repository.max_cached_repos
+            if (
+                "max_cached_repos" in repo_overrides
+                and repo_overrides["max_cached_repos"] is not None
+            ):
                 config.repository.max_cached_repos = repo_overrides["max_cached_repos"]
                 logger.debug(
-                    f"  Repository max_cached_repos override: {old_max_repos} -> {config.repository.max_cached_repos}"
+                    f"  Repository max_cached_repos override: {config.repository.max_cached_repos}"
                 )
+        # Apply overrides for documentation if necessary, similar to repository
+        if "documentation" in overrides and overrides["documentation"] is not None:
+            doc_overrides = overrides["documentation"]
+            if config.documentation is None:
+                config.documentation = DocumentationConfig()
+            # Example: if "include_tags" in doc_overrides: config.documentation.include_tags = doc_overrides["include_tags"]
+            # Add more specific documentation overrides as needed
 
-    # Log final configuration
+    # Log final configuration using the getter for cache_dir
     logger.info("Final configuration values:")
     logger.info(f"  Server Name: {config.name}")
     logger.info(f"  Log Level: {config.log_level}")
-    logger.info(f"  Repository:")
-    logger.info(f"    Cache Directory: {config.repository.cache_dir}")
-    logger.info(f"    Max Cached Repos: {config.repository.max_cached_repos}")
+    if config.repository:
+        final_cache_dir = (
+            config.repository.get_cache_dir_path()
+        )  # Ensures path is resolved and created
+        logger.info(f"  Repository:")
+        logger.info(f"    Cache Directory: {final_cache_dir}")
+        logger.info(f"    Max Cached Repos: {config.repository.max_cached_repos}")
+    if config.documentation:
+        logger.info(f"  Documentation Config: {config.documentation}")
 
     return config

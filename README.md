@@ -241,11 +241,23 @@ cd mcp-code-understanding
 # 2. Create virtual environment
 uv venv
 
-# 3. Install dependencies (editable mode with dev extras)
-uv pip install -e ".[dev]"
+# 3. Activate the virtual environment
+#    Choose the command appropriate for your operating system and shell:
 
-# 4. Activate virtual environment
+#    Linux/macOS (bash/zsh):
 source .venv/bin/activate
+
+#    Windows (Command Prompt - cmd.exe):
+.venv\\Scripts\\activate.bat
+
+#    Windows (PowerShell):
+#    Note: You might need to adjust your execution policy first.
+#    Run: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+.venv\\Scripts\\Activate.ps1
+
+# 4. Install dependencies (editable mode with dev extras)
+#    (Ensure your virtual environment is activated first!)
+uv pip install -e ".[dev]"
 
 # 5. Set up pre-commit hooks
 pre-commit install

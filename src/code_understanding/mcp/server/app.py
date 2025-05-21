@@ -531,13 +531,18 @@ def main(
 ) -> int:
     """Run the server with specified transport."""
     try:
-        # Create server with command line overrides
-        config = load_config()
-        if cache_dir:
-            config.repository.cache_dir = cache_dir
-        if max_cached_repos:
-            config.repository.max_cached_repos = max_cached_repos
+        # Create overrides dict from command line args
+        overrides = {}
+        if cache_dir or max_cached_repos:
+            overrides["repository"] = {}
+            if cache_dir:
+                overrides["repository"]["cache_dir"] = cache_dir
+            if max_cached_repos:
+                overrides["repository"]["max_cached_repos"] = max_cached_repos
 
+        # Create server with command line overrides
+        config = load_config(overrides=overrides)
+        
         global server
         server = create_mcp_server(config)
 

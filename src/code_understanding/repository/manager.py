@@ -300,7 +300,7 @@ class RepositoryManager:
                 # For Git repos, modify URL only for clone operation
                 clone_url = url  # Default to original
                 if not is_local:
-                    token = os.environ.get("GITHUB_TOKEN")
+                    token = os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN")
                     if token:
                         parsed = urlparse(url)
                         if parsed.hostname == "github.com":

@@ -1,3 +1,9 @@
+# ⚠️ Platform Support Notice
+
+**This MCP server currently only works on Mac or Linux. Windows is NOT supported at this time.**
+
+*Support for Windows is planned for a future release, and work is ongoing to enable compatibility.*
+
 # Code Understanding MCP Server
 
 An MCP (Model Context Protocol) server designed to understand codebases and provide intelligent context to AI coding assistants. This server handles both local and remote GitHub repositories and supports standard MCP-compliant operations.

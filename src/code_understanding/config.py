@@ -14,6 +14,8 @@ from typing import Dict, List, Optional
 import yaml
 from platformdirs import user_cache_dir, user_config_dir
 
+# Global storage for active configuration overrides
+_active_config_overrides: Optional[Dict] = None
 
 @dataclass
 class DocumentationConfig:
@@ -286,6 +288,15 @@ def load_config(
 ) -> ServerConfig:
     """Load configuration from YAML file with optional overrides."""
     logger = logging.getLogger(__name__)
+    
+    global _active_config_overrides
+    
+    # If no new overrides provided, use stored overrides
+    if overrides is None and _active_config_overrides is not None:
+        overrides = _active_config_overrides
+    # If new overrides provided, store them
+    elif overrides is not None:
+        _active_config_overrides = overrides
 
     # Load base config
     config = _load_base_config(config_path)
@@ -297,48 +308,25 @@ def load_config(
             config.name = overrides["name"]
         if "log_level" in overrides:
             config.log_level = overrides["log_level"]
-        # ... other direct ServerConfig attribute overrides
 
         if "repository" in overrides and overrides["repository"] is not None:
             repo_overrides = overrides["repository"]
-            if (
-                config.repository is None
-            ):  # Should be initialized by _load_base_config or ServerConfig.__post_init__
+            if config.repository is None:
                 config.repository = RepositoryConfig()
 
-            if (
-                "cache_dir" in repo_overrides
-                and repo_overrides["cache_dir"] is not None
-            ):
-                # Store the override string; get_cache_dir_path() will resolve it
+            if "cache_dir" in repo_overrides and repo_overrides["cache_dir"] is not None:
                 config.repository.cache_dir = repo_overrides["cache_dir"]
-                logger.debug(
-                    f"  Repository cache_dir override set to: {config.repository.cache_dir}"
-                )
-            if (
-                "max_cached_repos" in repo_overrides
-                and repo_overrides["max_cached_repos"] is not None
-            ):
+                logger.debug(f"  Repository cache_dir override set to: {config.repository.cache_dir}")
+            if "max_cached_repos" in repo_overrides and repo_overrides["max_cached_repos"] is not None:
                 config.repository.max_cached_repos = repo_overrides["max_cached_repos"]
-                logger.debug(
-                    f"  Repository max_cached_repos override: {config.repository.max_cached_repos}"
-                )
-        # Apply overrides for documentation if necessary, similar to repository
-        if "documentation" in overrides and overrides["documentation"] is not None:
-            doc_overrides = overrides["documentation"]
-            if config.documentation is None:
-                config.documentation = DocumentationConfig()
-            # Example: if "include_tags" in doc_overrides: config.documentation.include_tags = doc_overrides["include_tags"]
-            # Add more specific documentation overrides as needed
+                logger.debug(f"  Repository max_cached_repos override: {config.repository.max_cached_repos}")
 
     # Log final configuration using the getter for cache_dir
     logger.info("Final configuration values:")
     logger.info(f"  Server Name: {config.name}")
     logger.info(f"  Log Level: {config.log_level}")
     if config.repository:
-        final_cache_dir = (
-            config.repository.get_cache_dir_path()
-        )  # Ensures path is resolved and created
+        final_cache_dir = config.repository.get_cache_dir_path()  # Ensures path is resolved and created
         logger.info(f"  Repository:")
         logger.info(f"    Cache Directory: {final_cache_dir}")
         logger.info(f"    Max Cached Repos: {config.repository.max_cached_repos}")

@@ -162,7 +162,8 @@ class RepositoryCache:
         with self._file_lock():
             metadata = self._sync_metadata()
 
-            # If target already exists, treat as success
+            # If target already exists in metadata, treat as success
+            # (This just means we have metadata for it, not that clone is complete)
             if target_path in metadata:
                 return True
 

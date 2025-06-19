@@ -240,7 +240,9 @@ class RepoMapBuilder:
 
         if directories:
             # Scan specified directories
+            logger.debug(f"Scanning specific directories: {directories}")
             target_files.extend(repo_filter.find_source_files(directories))
+            logger.debug(f"Found {len(target_files)} files in specified directories: {directories}")
 
         target_files = list(dict.fromkeys(target_files))  # Remove duplicates
         logger.debug(
@@ -404,9 +406,19 @@ class RepoMapBuilder:
         # Only proceed with content generation if both clone and build are complete
         try:
             repo_map = await self.initialize_repo_map(cache_path, max_tokens)
+            
+            # DEBUG: Log the actual parameters received
+            logger.debug(f"[FILTERING DEBUG] files parameter: {files}")
+            logger.debug(f"[FILTERING DEBUG] directories parameter: {directories}")
+            logger.debug(f"[FILTERING DEBUG] files and directories after filtering empty: files={files if files else None}, directories={directories if directories else None}")
+            
+            # Filter out empty arrays - treat them as None
+            effective_files = files if files else None
+            effective_directories = directories if directories else None
+            logger.debug(f"[FILTERING DEBUG] effective filtering condition: {bool(effective_files or effective_directories)}")
 
             # Use optimized gathering if specific files/directories are provided
-            if files or directories:
+            if effective_files or effective_directories:
                 target_files = await self.gather_files_targeted(
                     cache_path, files=files, directories=directories
                 )

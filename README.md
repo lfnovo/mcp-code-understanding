@@ -345,6 +345,13 @@ When you're ready to publish a new version to PyPI, follow these steps:
 
 You'll need PyPI credentials configured or you'll be prompted to enter them during upload.
 
+## Version History
+
+### v0.1.6 (Latest)
+- **Dependency Fix**: Explicitly pinned `configargparse==1.7` to resolve installation issues caused by the yanked version in PyPI
+- This ensures clean installation with `uvx` and other package managers by preventing dependency resolution failures
+- No functional changes to the server capabilities
+
 ## License
 
 MIT

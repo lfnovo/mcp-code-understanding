@@ -51,19 +51,20 @@ def register_tools(
         name="get_repo_file_content",
         description="""Retrieve file contents or directory listings from a repository. For files, returns the complete file content. For directories, returns a non-recursive listing of immediate files and subdirectories.
 
-REQUIRED PARAMETER GUIDANCE:
-- repo_path: MUST match the exact format of the original input to clone_repo
+PARAMETER GUIDANCE:
+- repo_path: (Required) MUST match the exact format of the original input to clone_repo
   - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
   - If you cloned using a local directory path, you MUST use that identical local path here
-  - Mismatched formats will result in 'Repository not found in cache' errors""",
+  - Mismatched formats will result in 'Repository not found in cache' errors
+- resource_path: (Optional) Path to the target file or directory within the repository. If not provided, it defaults to the repository's root directory.""",
     )
-    async def get_repo_file_content(repo_path: str, resource_path: str) -> dict:
+    async def get_repo_file_content(repo_path: str, resource_path: Optional[str] = None) -> dict:
         """
         Retrieve file contents or directory listings from a repository.
 
         Args:
             repo_path (str): Path or URL to the repository
-            resource_path (str): Path to the target file or directory within the repository
+            resource_path (str, optional): Path to the target file or directory within the repository. Defaults to the repository root if not provided.
 
         Returns:
             dict: For files:
@@ -84,6 +85,9 @@ REQUIRED PARAMETER GUIDANCE:
             To explore subdirectories, make additional calls with the subdirectory path.
         """
         try:
+            if resource_path is None:
+                resource_path = "."
+
             # Check metadata.json to ensure repository is cloned and ready
             from code_understanding.repository.path_utils import get_cache_path
             cache_path = get_cache_path(repo_manager.cache_dir, repo_path)
@@ -251,9 +255,9 @@ RESPONSE CHARACTERISTICS:
     * Working with complex repositories
 
 3. Scope Control Options:
-- 'files': Analyze specific files (useful for targeted analysis)
-- 'directories': Analyze specific directories
-- Both parameters support gradual exploration of large codebases
+- 'files': Analyze specific files. If only this is provided, the entire repository will be searched for matching file names.
+- 'directories': Analyze all source files within specific directories.
+- If BOTH 'files' and 'directories' are provided, the tool will perform an INTERSECTION, analyzing only the files named in 'files' that are also located within the specified 'directories'.
 
 4. Response Metadata:
 - Contains processing statistics and limitation details
@@ -264,7 +268,7 @@ NOTE: This tool supports both broad and focused analysis strategies. Response ha
     )
     async def get_source_repo_map(
         repo_path: str,
-        directories: List[str],  # Made mandatory for testing
+        directories: Optional[List[str]] = None,
         files: Optional[List[str]] = None,
         max_tokens: Optional[int] = None,
     ) -> dict:
@@ -310,6 +314,9 @@ NOTE: This tool supports both broad and focused analysis strategies. Response ha
             logger.debug(f"[MCP DEBUG]   directories: {directories}")
             logger.debug(f"[MCP DEBUG]   max_tokens: {max_tokens}")
             
+            if directories is None:
+                directories = []
+                
             return await repo_map_builder.get_repo_map_content(
                 repo_path, files=files, directories=directories, max_tokens=max_tokens
             )
@@ -412,10 +419,10 @@ RESPONSE CHARACTERISTICS:
    - Supports both full-repo and targeted analysis
 
 3. Scope Control Options:
-   - 'files': Analyze specific files
-   - 'directories': Analyze specific directories
-   - 'limit': Control maximum results returned
-   - Default limit of 50 most critical files
+   - 'files': Analyze specific files. If only this is provided, the entire repository will be searched for matching file names.
+   - 'directories': Analyze all source files within specific directories.
+   - If BOTH 'files' and 'directories' are provided, the tool will perform an INTERSECTION, analyzing only the files named in 'files' that are also located within the specified 'directories'.
+   - 'limit': Control maximum results returned.
 
 4. Response Metadata:
    - Total files analyzed

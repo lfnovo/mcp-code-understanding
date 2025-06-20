@@ -226,25 +226,45 @@ class RepoMapBuilder:
         directories: Optional[List[str]] = None,
     ) -> List[str]:
         """
-        Optimized file gathering that only checks specified directories or files.
+        Optimized file gathering.
+        - If only `directories` are given, find all source files within them.
+        - If only `files` are given, find all source files matching those names in the repo.
+        - If BOTH are given, find all source files within the given `directories` that ALSO match the names in `files` (INTERSECTION).
         """
         repo_filter = RepoFilter(Path(root_dir))
         target_files = []
 
-        if files:
-            # Direct file checking
-            for file in files:
-                file_path = Path(root_dir) / file
-                if repo_filter.should_include(file_path):
-                    target_files.append(str(file_path))
+        # Case 1: Both directories and files are provided (INTERSECTION)
+        if directories and files:
+            logger.debug(f"Scanning specific directories for specific files (Intersection): dirs={directories}, files={files}")
+            # First, get all source files from the specified directories.
+            files_in_dirs = repo_filter.find_source_files(directories)
+            
+            # Now, filter this list to include only the files that match the basenames in the `files` list.
+            file_basenames_to_match = {os.path.basename(f) for f in files}
+            
+            for file_path in files_in_dirs:
+                if os.path.basename(file_path) in file_basenames_to_match:
+                    target_files.append(file_path)
 
-        if directories:
-            # Scan specified directories
+        # Case 2: Only directories are provided
+        elif directories:
             logger.debug(f"Scanning specific directories: {directories}")
             target_files.extend(repo_filter.find_source_files(directories))
-            logger.debug(f"Found {len(target_files)} files in specified directories: {directories}")
 
-        target_files = list(dict.fromkeys(target_files))  # Remove duplicates
+        # Case 3: Only files are provided
+        elif files:
+            logger.debug(f"Searching for specific files globally: {files}")
+            # This requires a full scan to find files by name.
+            all_source_files = repo_filter.find_source_files() # Scans the whole repo
+            file_basenames_to_match = {os.path.basename(f) for f in files}
+            
+            for file_path in all_source_files:
+                if os.path.basename(file_path) in file_basenames_to_match:
+                    target_files.append(file_path)
+
+        # Remove duplicates and sort
+        target_files = list(dict.fromkeys(target_files))
         logger.debug(
             f"Found {len(target_files)} source files in specified paths within {root_dir}"
         )

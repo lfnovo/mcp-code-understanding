@@ -22,8 +22,8 @@ classifiers = [
 ]
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    "mcp==1.9.4",
-    "mcp[cli]==1.9.4",
+    "mcp==1.6.0",
+    "mcp[cli]==1.6.0",
     "gitpython==3.1.44",
     "langchain==0.3.25",
     "aiohttp==3.11.18",

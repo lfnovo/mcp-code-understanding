@@ -74,9 +74,6 @@ class Repository:
 
     async def get_resource(self, resource_path: str) -> Dict[str, Any]:
         """Get contents of a file or directory listing."""
-        if self._manager:
-            await self._manager.cache.update_access(str(self.root_path))
-
         path = self.root_path / resource_path
 
         if not path.exists():

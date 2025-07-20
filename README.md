@@ -8,6 +8,10 @@
 
 An MCP (Model Context Protocol) server designed to understand codebases and provide intelligent context to AI coding assistants. This server handles both local and remote GitHub repositories and supports standard MCP-compliant operations.
 
+## 🤖 AI Assistant Installation
+
+**Have an AI coding assistant help you install this server!** Copy and paste the contents of our [AI Setup Prompt](docs/AI_SETUP_GUIDE.md) to your AI assistant (Claude, ChatGPT, Cursor, etc.) and it will guide you through the entire installation process.
+
 ## Features
 
 - Clone and analyze GitHub repositories or local codebases
@@ -278,10 +282,6 @@ If the installed binary is not found:
    ```
 
 3. Use absolute path in MCP configuration
-
-## AI Assistant Setup Guide
-
-For AI coding assistants helping users with setup, please refer to our [AI Setup Guide](docs/AI_SETUP_GUIDE.md) which provides step-by-step instructions for guiding users through the installation process.
 
 ## Server Configuration
 

@@ -1,10 +1,12 @@
-# AI Assistant Setup Guide for MCP Code Understanding Server
+# AI Assistant Setup Prompt for MCP Code Understanding Server
 
-This guide helps AI coding assistants (like Claude, GitHub Copilot, Cursor, etc.) properly configure and use the MCP Code Understanding Server.
+Copy and paste this entire prompt to your AI coding assistant to help you install and configure the MCP Code Understanding Server.
 
-## Setup Instructions for AI Assistants
+---
 
-When a user asks you to set up the MCP Code Understanding Server, follow these steps:
+## Instructions for AI Assistant
+
+You are helping me set up the MCP Code Understanding Server. Please follow these steps:
 
 ### Step 1: Verify Prerequisites
 

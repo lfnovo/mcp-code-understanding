@@ -74,9 +74,6 @@ class Repository:
 
     async def get_resource(self, resource_path: str) -> Dict[str, Any]:
         """Get contents of a file or directory listing."""
-        if self._manager:
-            await self._manager.cache.update_access(str(self.root_path))
-
         path = self.root_path / resource_path
 
         if not path.exists():
@@ -418,13 +415,30 @@ class RepositoryManager:
         """Clone a remote repository."""
         logger.info(f"Starting clone of repository: {url}")
 
-        # Before cloning, check if we need to clean up any repositories
-        # to make room for the new one
-        await self._cleanup_repos_for_clone()
-
         cache_path = get_cache_path(self.cache_dir, url)
         str_path = str(cache_path.resolve())
         logger.debug(f"Cache path for repository: {str_path}")
+
+        # Check if repository is already cloned or being cloned
+        repo_status = await self.cache.get_repository_status(str_path)
+        if repo_status and "clone_status" in repo_status:
+            clone_status = repo_status["clone_status"]
+            if clone_status and clone_status.get("status") == "complete":
+                return {
+                    "status": "already_cloned",
+                    "path": str_path, 
+                    "message": "Repository already cloned and ready",
+                }
+            elif clone_status and clone_status.get("status") in ["cloning", "copying"]:
+                return {
+                    "status": "clone_in_progress",
+                    "path": str_path,
+                    "message": "Repository clone already in progress", 
+                }
+
+        # Before cloning, check if we need to clean up any repositories
+        # to make room for the new one
+        await self._cleanup_repos_for_clone()
 
         # First, ensure we can add another repo
         logger.debug("Preparing cache for clone...")

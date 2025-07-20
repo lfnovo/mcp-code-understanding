@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "code-understanding-mcp-server"
-version = "0.1.6"
+version = "0.1.8"
 description = "MCP server for code understanding and context generation"
 readme = "README.md"
 authors = [
@@ -22,34 +22,35 @@ classifiers = [
 ]
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    "mcp>=1.0.0",
-    "mcp[cli]>=1.0.0",
-    "gitpython>=3.1.0",
-    "langchain>=0.3.0",
-    "aiohttp>=3.8.0",
-    "pyyaml>=6.0",
-    "typing-extensions>=4.5.0",
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=4.1.0",
-    "pathspec>=0.12.1",
-    "aider-chat==0.82.1",  # Brings in all needed tree-sitter and parsing dependencies
-    "identify>=2.5.35",  # For reliable text file detection
-    "lizard>=1.17.24",
-    "debugpy>=1.8.1",  # For VS Code debugging support
-    "platformdirs>=4.2.0",
-    "filelock>=3.12.0"
+    "mcp==1.6.0",
+    "mcp[cli]==1.6.0",
+    "gitpython==3.1.44",
+    "langchain==0.3.25",
+    "aiohttp==3.11.18",
+    "pyyaml==6.0.2",
+    "typing-extensions==4.13.2",
+    "pytest==8.4.0",
+    "pytest-asyncio==1.0.0",
+    "pytest-cov==6.2.1",
+    "pathspec==0.12.1",
+    "aider-chat==0.84.0",  # Brings in all needed tree-sitter and parsing dependencies
+    "configargparse==1.7.1",  # Updated to non-yanked version
+    "identify==2.6.12",  # For reliable text file detection
+    "lizard==1.17.31",
+    "debugpy==1.8.14",  # For VS Code debugging support
+    "platformdirs==4.3.8",
+    "filelock==3.18.0"
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=4.1.0",
-    "black>=23.12.0",
-    "isort>=5.13.0",
-    "mypy>=1.8.0",
-    "pre-commit>=3.5.0"
+    "pytest==8.4.0",
+    "pytest-asyncio==1.0.0",
+    "pytest-cov==6.2.1",
+    "black==25.1.0",
+    "isort==6.0.1",
+    "mypy==1.16.1",
+    "pre-commit==4.2.0"
 ]
 
 [project.scripts]

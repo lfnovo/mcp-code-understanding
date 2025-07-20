@@ -3,9 +3,22 @@ import lizard
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import os
+import asyncio
+import concurrent.futures
 
 logger = logging.getLogger("code_understanding.analysis.complexity")
 
+
+def _run_lizard_analysis(valid_files: List[str], num_threads: int) -> List[lizard.FileInformation]:
+    """
+    Helper function to run lizard analysis in a separate process.
+    This prevents the synchronous, multi-threaded CPU-bound task from
+    blocking the main asyncio event loop of the server.
+    """
+    logger.debug(f"Running lizard analysis on {len(valid_files)} files with {num_threads} threads in a separate process.")
+    # lizard.analyze_files returns an iterator, so we convert it to a list
+    # to ensure the analysis is complete before returning from the process.
+    return list(lizard.analyze_files(valid_files, threads=num_threads))
 
 class CodeComplexityAnalyzer:
     def __init__(self, repo_manager, repo_map_builder):
@@ -173,14 +186,24 @@ class CodeComplexityAnalyzer:
                 os.cpu_count() or 4, 8
             )  # Use at most 8 threads, or fewer if CPU count is lower
             logger.debug(
-                f"Analyzing {len(valid_files)} files using {num_threads} threads"
+                f"Analyzing {len(valid_files)} files using {num_threads} threads via ProcessPoolExecutor"
             )
+
+            # Get the current asyncio event loop
+            loop = asyncio.get_running_loop()
+
+            # Run the synchronous, multi-threaded lizard analysis in a separate process
+            # to avoid blocking the asyncio event loop.
+            with concurrent.futures.ProcessPoolExecutor() as pool:
+                file_analyses = await loop.run_in_executor(
+                    pool, _run_lizard_analysis, valid_files, num_threads
+                )
+
 
             # NOTE: Lizard will silently skip files that it cannot process (no parser available)
             # or files that don't contain any functions. These will not appear in the returned
             # file_analyses, and there's no direct way to determine which files were skipped.
-            file_analyses = lizard.analyze_files(valid_files, threads=num_threads)
-
+            
             # Process each file analysis
             for file_analysis in file_analyses:
                 try:

@@ -151,7 +151,7 @@ async def get_repository_documentation(repo_path: str) -> Dict[str, Any]:
     config = load_config()
 
     # Convert repo_path to absolute cache path using the standard utility
-    cache_dir = Path(config.repository.cache_dir)
+    cache_dir = config.repository.get_cache_dir_path()
     cache_path = str(get_cache_path(cache_dir, repo_path).resolve())
 
     # Validate repository exists

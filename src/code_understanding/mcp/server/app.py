@@ -6,7 +6,7 @@ import logging
 import sys
 import asyncio
 import click
-from typing import List
+from typing import List, Optional
 
 from mcp.server.fastmcp import FastMCP
 from code_understanding.config import ServerConfig, load_config
@@ -51,19 +51,20 @@ def register_tools(
         name="get_repo_file_content",
         description="""Retrieve file contents or directory listings from a repository. For files, returns the complete file content. For directories, returns a non-recursive listing of immediate files and subdirectories.
 
-REQUIRED PARAMETER GUIDANCE:
-- repo_path: MUST match the exact format of the original input to clone_repo
+PARAMETER GUIDANCE:
+- repo_path: (Required) MUST match the exact format of the original input to clone_repo
   - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
   - If you cloned using a local directory path, you MUST use that identical local path here
-  - Mismatched formats will result in 'Repository not found in cache' errors""",
+  - Mismatched formats will result in 'Repository not found in cache' errors
+- resource_path: (Optional) Path to the target file or directory within the repository. If not provided, it defaults to the repository's root directory.""",
     )
-    async def get_repo_file_content(repo_path: str, resource_path: str) -> dict:
+    async def get_repo_file_content(repo_path: str, resource_path: Optional[str] = None) -> dict:
         """
         Retrieve file contents or directory listings from a repository.
 
         Args:
             repo_path (str): Path or URL to the repository
-            resource_path (str): Path to the target file or directory within the repository
+            resource_path (str, optional): Path to the target file or directory within the repository. Defaults to the repository root if not provided.
 
         Returns:
             dict: For files:
@@ -84,6 +85,27 @@ REQUIRED PARAMETER GUIDANCE:
             To explore subdirectories, make additional calls with the subdirectory path.
         """
         try:
+            if resource_path is None:
+                resource_path = "."
+
+            # Check metadata.json to ensure repository is cloned and ready
+            from code_understanding.repository.path_utils import get_cache_path
+            cache_path = get_cache_path(repo_manager.cache_dir, repo_path)
+            str_path = str(cache_path.resolve())
+            
+            repo_status = await repo_manager.cache.get_repository_status(str_path)
+            if not repo_status or "clone_status" not in repo_status:
+                return {"status": "error", "error": "Repository not found. Please clone it first using clone_repo."}
+            
+            clone_status = repo_status["clone_status"]
+            if not clone_status:
+                return {"status": "error", "error": "Repository not cloned. Please clone it first using clone_repo."}
+            elif clone_status.get("status") in ["cloning", "copying"]:
+                return {"status": "error", "error": "Repository clone still in progress. Please wait for clone to complete."}
+            elif clone_status.get("status") != "complete":
+                return {"status": "error", "error": "Repository clone failed or incomplete. Please try cloning again."}
+            
+            # Clone is complete, get repository and access resource
             repo = await repo_manager.get_repository(repo_path)
             return await repo.get_resource(resource_path)
         except Exception as e:
@@ -137,7 +159,7 @@ REQUIRED PARAMETER GUIDANCE:
         name="clone_repo",
         description="Clone a repository into the MCP server's analysis cache and initiate background analysis. Required before using other analysis endpoints like get_source_repo_map.",
     )
-    async def clone_repo(url: str, branch: str = None) -> dict:
+    async def clone_repo(url: str, branch: Optional[str] = None) -> dict:
         """
         Clone a repository into MCP server's cache and prepare it for analysis.
 
@@ -164,20 +186,37 @@ REQUIRED PARAMETER GUIDANCE:
             - Use get_source_repo_map to check analysis status and retrieve results
         """
         try:
-            logger.debug(f"[TRACE] clone_repo: Starting get_repository for {url}")
-            repo = await repo_manager.get_repository(url)
-            logger.debug(f"[TRACE] clone_repo: get_repository completed for {url}")
-
-            # Note: RepoMap build will be started automatically after clone completes
-            response = {
-                "status": "pending",
-                "path": str(repo.root_path),
-                "message": "Repository clone started in background",
-            }
-            logger.debug(
-                f"[TRACE] clone_repo: Preparing to return response: {response}"
-            )
-            return response
+            # Default branch to "main" if not provided
+            if branch is None:
+                branch = "main"
+            
+            # Check metadata.json first to see if clone already exists or is in progress
+            from code_understanding.repository.path_utils import get_cache_path
+            cache_path = get_cache_path(repo_manager.cache_dir, url)
+            str_path = str(cache_path.resolve())
+            
+            # Check clone status in metadata
+            repo_status = await repo_manager.cache.get_repository_status(str_path)
+            if repo_status and "clone_status" in repo_status:
+                clone_status = repo_status["clone_status"]
+                if clone_status and clone_status.get("status") == "complete":
+                    return {
+                        "status": "already_cloned",
+                        "path": str_path,
+                        "message": "Repository already cloned and ready",
+                    }
+                elif clone_status and clone_status.get("status") in ["cloning", "copying"]:
+                    return {
+                        "status": "clone_in_progress", 
+                        "path": str_path,
+                        "message": "Repository clone already in progress",
+                    }
+            
+            # Repository not cloned yet, start clone process
+            logger.debug(f"[TRACE] clone_repo: Starting clone_repository for {url} with branch {branch}")
+            result = await repo_manager.clone_repository(url, branch)
+            logger.debug(f"[TRACE] clone_repo: clone_repository completed for {url}")
+            return result
         except Exception as e:
             logger.error(f"Error cloning repository: {e}", exc_info=True)
             error_response = {"status": "error", "error": str(e)}
@@ -216,9 +255,9 @@ RESPONSE CHARACTERISTICS:
     * Working with complex repositories
 
 3. Scope Control Options:
-- 'files': Analyze specific files (useful for targeted analysis)
-- 'directories': Analyze specific directories
-- Both parameters support gradual exploration of large codebases
+- 'files': Analyze specific files. If only this is provided, the entire repository will be searched for matching file names.
+- 'directories': Analyze all source files within specific directories.
+- If BOTH 'files' and 'directories' are provided, the tool will perform an INTERSECTION, analyzing only the files named in 'files' that are also located within the specified 'directories'.
 
 4. Response Metadata:
 - Contains processing statistics and limitation details
@@ -229,9 +268,9 @@ NOTE: This tool supports both broad and focused analysis strategies. Response ha
     )
     async def get_source_repo_map(
         repo_path: str,
-        files: List[str] = None,
-        directories: List[str] = None,
-        max_tokens: int = None,
+        directories: Optional[List[str]] = None,
+        files: Optional[List[str]] = None,
+        max_tokens: Optional[int] = None,
     ) -> dict:
         """
         Retrieve a semantic analysis map of the repository's code structure.
@@ -268,6 +307,16 @@ NOTE: This tool supports both broad and focused analysis strategies. Response ha
             - For large repos, consider using max_tokens or targeting specific directories
         """
         try:
+            # DEBUG: Log the parameters received at MCP endpoint
+            logger.debug(f"[MCP DEBUG] get_source_repo_map called with:")
+            logger.debug(f"[MCP DEBUG]   repo_path: {repo_path}")
+            logger.debug(f"[MCP DEBUG]   files: {files}")
+            logger.debug(f"[MCP DEBUG]   directories: {directories}")
+            logger.debug(f"[MCP DEBUG]   max_tokens: {max_tokens}")
+            
+            if directories is None:
+                directories = []
+                
             return await repo_map_builder.get_repo_map_content(
                 repo_path, files=files, directories=directories, max_tokens=max_tokens
             )
@@ -304,7 +353,7 @@ RESPONSE CHARACTERISTICS:
 NOTE: Use this tool to understand repository structure and choose which directories to analyze in detail.""",
     )
     async def get_repo_structure(
-        repo_path: str, directories: List[str] = None, include_files: bool = False
+        repo_path: str, directories: Optional[List[str]] = None, include_files: bool = False
     ) -> dict:
         """
         Get repository structure information with optional file listings.
@@ -370,10 +419,10 @@ RESPONSE CHARACTERISTICS:
    - Supports both full-repo and targeted analysis
 
 3. Scope Control Options:
-   - 'files': Analyze specific files
-   - 'directories': Analyze specific directories
-   - 'limit': Control maximum results returned
-   - Default limit of 50 most critical files
+   - 'files': Analyze specific files. If only this is provided, the entire repository will be searched for matching file names.
+   - 'directories': Analyze all source files within specific directories.
+   - If BOTH 'files' and 'directories' are provided, the tool will perform an INTERSECTION, analyzing only the files named in 'files' that are also located within the specified 'directories'.
+   - 'limit': Control maximum results returned.
 
 4. Response Metadata:
    - Total files analyzed
@@ -383,8 +432,8 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
     )
     async def get_repo_critical_files(
         repo_path: str,
-        files: List[str] = None,
-        directories: List[str] = None,
+        files: Optional[List[str]] = None,
+        directories: Optional[List[str]] = None,
         limit: int = 50,
         include_metrics: bool = True,
     ) -> dict:

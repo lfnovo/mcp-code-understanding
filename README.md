@@ -23,11 +23,73 @@ An MCP (Model Context Protocol) server designed to understand codebases and prov
 
 ## Quick Start: MCP Client Configuration
 
-**Prerequisite: `uv` Installation**
+### Prerequisites
 
-This server is launched using `uvx`, which is part of the `uv` Python package manager. If you don't already have `uv` installed, please install it first. You can find installation instructions in the "For Developers" section under "Prerequisites" below, or visit the official `uv` installation guide [astral.sh/uv](https://astral.sh/uv).
+**Required: `uv` Installation**
 
-To use this server with your MCP client, add the following configuration to your MCP client's configuration file:
+This server requires `uv`, a modern Python package manager. If you don't already have `uv` installed:
+
+```bash
+# Install UV (macOS/Linux)
+curl -sSf https://astral.sh/uv/install.sh | sh
+
+# Install UV (Windows PowerShell)
+ipow https://astral.sh/uv/install.ps1 | iex
+```
+
+For more installation options, visit the official `uv` installation guide at [astral.sh/uv](https://astral.sh/uv).
+
+### Installation Methods
+
+#### Method 1: Tool Installation (Recommended)
+
+For the most reliable isolated installation:
+
+```bash
+# Install the MCP server as a tool
+uv tool install code-understanding-mcp-server
+```
+
+#### Method 2: Direct Execution with uvx (Fallback)
+
+⚠️ **Warning**: This method may encounter dependency conflicts with other Python packages on your system. Use Method 1 if you experience any issues.
+
+```bash
+# Run directly without installation
+uvx code-understanding-mcp-server
+```
+
+### Verify Installation
+
+After installation, verify the binary location:
+
+```bash
+# For Method 1 (tool installation)
+which code-understanding-mcp-server
+# Expected output example: /Users/username/.local/bin/code-understanding-mcp-server
+
+# For Method 2 (uvx) - no persistent binary
+# The tool runs directly through uvx
+```
+
+### Configure Your MCP Client
+
+Use the verified binary path in your MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "code-understanding": {
+      "command": "/path/to/code-understanding-mcp-server",
+      "args": []
+    }
+  }
+}
+```
+
+Replace `/path/to/code-understanding-mcp-server` with the actual path from the verification step above.
+
+For uvx method (less reliable):
 
 ```json
 {
@@ -41,8 +103,6 @@ To use this server with your MCP client, add the following configuration to your
   }
 }
 ```
-
-That's it! The server will be automatically downloaded and run when needed by your MCP client.
 
 ## Why Use this MCP Server?
 
@@ -127,12 +187,10 @@ If you need to access private repositories or want to avoid GitHub API rate limi
 {
   "mcpServers": {
     "code-understanding": {
-      "command": "uvx",
-      "args": [
-        "code-understanding-mcp-server"
-      ],
+      "command": "/path/to/code-understanding-mcp-server",
+      "args": [],
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-token-here"
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-github-token-here"
       }
     }
   }
@@ -147,16 +205,15 @@ For advanced users, the server supports several configuration options:
 {
   "mcpServers": {
     "code-understanding": {
-      "command": "uvx",
+      "command": "/path/to/code-understanding-mcp-server",
       "args": [
-        "code-understanding-mcp-server",
         "--cache-dir", "~/custom-cache-dir",     // Override repository cache location
         "--max-cached-repos", "20",              // Override maximum number of cached repos
         "--transport", "stdio",                  // Transport type (stdio or sse)
         "--port", "3001"                         // Port for SSE transport (only used with sse)
       ],
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-token-here"
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-github-token-here"
       }
     }
   }
@@ -168,6 +225,63 @@ Available options:
 - `--max-cached-repos`: Set maximum number of cached repositories (default: 10)
 - `--transport`: Choose transport type (stdio or sse, default: stdio)
 - `--port`: Set port for SSE transport (default: 3001, only used with sse transport)
+
+### Platform-Specific Notes
+
+#### macOS
+- Binary typically installs to: `~/.local/bin/code-understanding-mcp-server`
+- Ensure `~/.local/bin` is in your PATH
+
+#### Linux
+- Binary typically installs to: `~/.local/bin/code-understanding-mcp-server`
+- May require: `export PATH="$HOME/.local/bin:$PATH"` in your shell profile
+
+#### Windows
+- **Not currently supported** - Windows support is planned for a future release
+- Development work is ongoing to enable Windows compatibility
+
+### Troubleshooting
+
+#### Dependency Conflicts
+
+If you encounter dependency conflicts when using `uvx`:
+
+1. Switch to the tool installation method:
+   ```bash
+   uv tool install code-understanding-mcp-server
+   ```
+
+2. If conflicts persist, create an isolated environment:
+   ```bash
+   # Create a dedicated virtual environment
+   uv venv ~/.venvs/mcp-code-understanding
+   # Activate it (macOS/Linux)
+   source ~/.venvs/mcp-code-understanding/bin/activate
+   # Install the package
+   uv pip install code-understanding-mcp-server
+   ```
+
+#### Binary Not Found
+
+If the installed binary is not found:
+
+1. Check installation location:
+   ```bash
+   # macOS/Linux
+   find ~/.local -name "code-understanding-mcp-server" 2>/dev/null
+   ```
+
+2. Add to PATH if needed:
+   ```bash
+   # Add to ~/.bashrc, ~/.zshrc, or appropriate shell config
+   export PATH="$HOME/.local/bin:$PATH"
+   ```
+
+3. Use absolute path in MCP configuration
+
+## AI Assistant Setup Guide
+
+For AI coding assistants helping users with setup, please refer to our [AI Setup Guide](docs/AI_SETUP_GUIDE.md) which provides step-by-step instructions for guiding users through the installation process.
 
 ## Server Configuration
 

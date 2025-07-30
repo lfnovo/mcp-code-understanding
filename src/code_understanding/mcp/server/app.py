@@ -122,7 +122,7 @@ REQUIRED PARAMETER GUIDANCE:
   - If you cloned using a local directory path, you MUST use that identical local path here
   - Mismatched formats will result in 'Repository not found in cache' errors""",
     )
-    async def refresh_repo(repo_path: str) -> dict:
+    async def refresh_repo(repo_path: str, branch: Optional[str] = None) -> dict:
         """
         Update a previously cloned repository in MCP's cache and refresh its analysis.
 
@@ -133,11 +133,12 @@ REQUIRED PARAMETER GUIDANCE:
 
         Args:
             repo_path (str): Path or URL matching what was originally provided to clone_repo
+            branch (str, optional): Specific branch to switch to during refresh
 
         Returns:
             dict: Response with format:
                 {
-                    "status": str,  # "pending", "error"
+                    "status": str,  # "pending", "switched_branch", "error"
                     "path": str,    # (On pending) Cache location being refreshed
                     "message": str, # (On pending) Status message
                     "error": str    # (On error) Error message
@@ -147,10 +148,11 @@ REQUIRED PARAMETER GUIDANCE:
             - Repository must be previously cloned and have completed initial analysis
             - Updates MCP's cached copy, does not modify the source repository
             - Automatically triggers rebuild of repository map with updated files
+            - If branch is specified, switches to that branch after pulling latest changes
             - Operation runs in background, check get_repo_map_content for status
         """
         try:
-            return await repo_manager.refresh_repository(repo_path)
+            return await repo_manager.refresh_repository(repo_path, branch)
         except Exception as e:
             logger.error(f"Error refreshing repository: {e}", exc_info=True)
             return {"status": "error", "error": str(e)}
@@ -200,11 +202,48 @@ REQUIRED PARAMETER GUIDANCE:
             if repo_status and "clone_status" in repo_status:
                 clone_status = repo_status["clone_status"]
                 if clone_status and clone_status.get("status") == "complete":
-                    return {
-                        "status": "already_cloned",
-                        "path": str_path,
-                        "message": "Repository already cloned and ready",
-                    }
+                    # Check if we need to switch branches
+                    stored_branch = repo_status.get("requested_branch")
+                    current_branch = repo_status.get("current_branch")
+                    
+                    if branch and stored_branch != branch:
+                        # Switch to the requested branch
+                        try:
+                            from git import Repo
+                            repo = Repo(cache_path)
+                            
+                            # Try to checkout the requested branch
+                            try:
+                                repo.git.checkout(branch)
+                                logger.debug(f"Successfully switched from {current_branch} to {branch}")
+                                
+                                # Update metadata with new branch
+                                await repo_manager.cache.add_repo(str_path, url, branch)
+                                
+                                return {
+                                    "status": "switched_branch",
+                                    "path": str_path,
+                                    "message": f"Switched from {stored_branch} to {branch}",
+                                    "previous_branch": stored_branch,
+                                    "current_branch": branch
+                                }
+                            except Exception as checkout_error:
+                                return {
+                                    "status": "error",
+                                    "error": f"Failed to switch to branch {branch}: {str(checkout_error)}"
+                                }
+                        except Exception as e:
+                            return {
+                                "status": "error", 
+                                "error": f"Failed to access repository for branch switching: {str(e)}"
+                            }
+                    else:
+                        return {
+                            "status": "already_cloned",
+                            "path": str_path,
+                            "message": "Repository already cloned and ready",
+                            "current_branch": stored_branch
+                        }
                 elif clone_status and clone_status.get("status") in ["cloning", "copying"]:
                     return {
                         "status": "clone_in_progress", 

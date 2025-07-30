@@ -107,6 +107,7 @@ class RepositoryCache:
             path: {
                 "url": meta.url,
                 "last_access": meta.last_access,
+                "branch": meta.branch,
                 "clone_status": meta.clone_status,
                 "repo_map_status": meta.repo_map_status,
             }
@@ -130,6 +131,7 @@ class RepositoryCache:
                 path=path,
                 url=info.get("url"),
                 last_access=info.get("last_access", ""),
+                branch=info.get("branch"),
                 clone_status=info.get("clone_status"),
                 repo_map_status=info.get("repo_map_status"),
             )

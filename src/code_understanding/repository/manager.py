@@ -472,8 +472,13 @@ class RepositoryManager:
             logger.error(f"Error initiating clone: {str(e)}", exc_info=True)
             return {"status": "error", "error": str(e)}
 
-    async def refresh_repository(self, path: str) -> Dict[str, Any]:
-        """Refresh a repository with latest changes."""
+    async def refresh_repository(self, path: str, branch: Optional[str] = None) -> Dict[str, Any]:
+        """Refresh a repository with latest changes and optionally switch branches.
+        
+        Args:
+            path: Repository path or URL
+            branch: Optional branch to switch to during refresh
+        """
         try:
             # Get cache path and resolve it
             cache_path = get_cache_path(self.cache_dir, path)
@@ -499,7 +504,7 @@ class RepositoryManager:
                     }
 
             # Start refresh in background
-            asyncio.create_task(self._do_refresh(path, str_path))
+            asyncio.create_task(self._do_refresh(path, str_path, branch))
 
             return {
                 "status": "pending",
@@ -511,7 +516,7 @@ class RepositoryManager:
             logger.error(f"Error initiating refresh: {str(e)}", exc_info=True)
             return {"status": "error", "error": str(e)}
 
-    async def _do_refresh(self, original_path: str, cache_path: str):
+    async def _do_refresh(self, original_path: str, cache_path: str, branch: Optional[str] = None):
         """Internal method to perform the actual refresh"""
         try:
             # Update status to refreshing
@@ -530,6 +535,14 @@ class RepositoryManager:
                 # For Git repos, do git pull
                 repo = Repo(cache_path)
                 await asyncio.to_thread(repo.remotes.origin.pull)
+                if branch:
+                    try:
+                        if not repo.head.is_detached and repo.active_branch.name != branch:
+                            logger.debug(f"Repository pulled to {repo.active_branch.name}, checking out {branch}")
+                            repo.git.checkout(branch)
+                            logger.debug(f"Successfully checked out branch: {branch}")
+                    except Exception as e:
+                        logger.warning(f"Could not verify/checkout branch {branch} during refresh: {e}")
             else:
                 # For local dirs:
                 original_path = Path(original_path).resolve()
@@ -557,6 +570,10 @@ class RepositoryManager:
                 cache_path,  # Fixed: use string path directly, no str() needed
                 {"status": "complete", "completed_at": datetime.now().isoformat()},
             )
+
+            # Update branch information if a branch was specified
+            if branch and is_git:
+                await self.cache.add_repo(cache_path, original_path, branch)
 
             # Start repo map build
             from ..context.builder import RepoMapBuilder

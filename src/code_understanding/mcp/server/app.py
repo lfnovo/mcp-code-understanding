@@ -116,9 +116,10 @@ PARAMETER GUIDANCE:
             elif clone_status.get("status") != "complete":
                 return {"status": "error", "error": "Repository clone failed or incomplete. Please try cloning again."}
             
-            # Clone is complete, get repository and access resource
-            repo = await repo_manager.get_repository(repo_path)
-            result = await repo.get_resource(resource_path)
+            # Clone is complete, create repository instance with correct cache path
+            from code_understanding.repository.manager import Repository
+            repository = Repository(str_path)
+            result = await repository.get_resource(resource_path)
             
             # Add branch and cache strategy information to response
             if isinstance(result, dict) and "type" in result:

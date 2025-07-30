@@ -58,26 +58,32 @@ PARAMETER GUIDANCE:
   - Mismatched formats will result in 'Repository not found in cache' errors
 - resource_path: (Optional) Path to the target file or directory within the repository. If not provided, it defaults to the repository's root directory.""",
     )
-    async def get_repo_file_content(repo_path: str, resource_path: Optional[str] = None) -> dict:
+    async def get_repo_file_content(repo_path: str, resource_path: Optional[str] = None, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
         """
         Retrieve file contents or directory listings from a repository.
 
         Args:
             repo_path (str): Path or URL to the repository
             resource_path (str, optional): Path to the target file or directory within the repository. Defaults to the repository root if not provided.
+            branch (str, optional): Specific branch to read from (only used with per-branch cache strategy)
+            cache_strategy (str, optional): Cache strategy - "shared" (default) or "per-branch"
 
         Returns:
             dict: For files:
                 {
                     "type": "file",
                     "path": str,  # Relative path within repository
-                    "content": str  # Complete file contents
+                    "content": str,  # Complete file contents
+                    "branch": str,  # Current branch name
+                    "cache_strategy": str  # Cache strategy used
                 }
                 For directories:
                 {
                     "type": "directory",
                     "path": str,  # Relative path within repository
-                    "contents": List[str]  # List of immediate files and subdirectories
+                    "contents": List[str],  # List of immediate files and subdirectories
+                    "branch": str,  # Current branch name
+                    "cache_strategy": str  # Cache strategy used
                 }
 
         Note:
@@ -90,7 +96,12 @@ PARAMETER GUIDANCE:
 
             # Check metadata.json to ensure repository is cloned and ready
             from code_understanding.repository.path_utils import get_cache_path
-            cache_path = get_cache_path(repo_manager.cache_dir, repo_path)
+            cache_path = get_cache_path(
+                repo_manager.cache_dir, 
+                repo_path, 
+                branch if cache_strategy == "per-branch" else None,
+                per_branch=(cache_strategy == "per-branch")
+            )
             str_path = str(cache_path.resolve())
             
             repo_status = await repo_manager.cache.get_repository_status(str_path)
@@ -105,9 +116,22 @@ PARAMETER GUIDANCE:
             elif clone_status.get("status") != "complete":
                 return {"status": "error", "error": "Repository clone failed or incomplete. Please try cloning again."}
             
-            # Clone is complete, get repository and access resource
-            repo = await repo_manager.get_repository(repo_path)
-            return await repo.get_resource(resource_path)
+            # Clone is complete, create repository instance with correct cache path
+            from code_understanding.repository.manager import Repository
+            repository = Repository(
+                repo_id=str_path,
+                root_path=str_path,
+                repo_type="git",
+                is_git=True
+            )
+            result = await repository.get_resource(resource_path)
+            
+            # Add branch and cache strategy information to response
+            if isinstance(result, dict) and "type" in result:
+                result["branch"] = repo_status.get("current_branch")
+                result["cache_strategy"] = cache_strategy
+            
+            return result
         except Exception as e:
             logger.error(f"Error getting resource: {e}", exc_info=True)
             return {"status": "error", "error": str(e)}
@@ -122,7 +146,7 @@ REQUIRED PARAMETER GUIDANCE:
   - If you cloned using a local directory path, you MUST use that identical local path here
   - Mismatched formats will result in 'Repository not found in cache' errors""",
     )
-    async def refresh_repo(repo_path: str) -> dict:
+    async def refresh_repo(repo_path: str, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
         """
         Update a previously cloned repository in MCP's cache and refresh its analysis.
 
@@ -133,33 +157,88 @@ REQUIRED PARAMETER GUIDANCE:
 
         Args:
             repo_path (str): Path or URL matching what was originally provided to clone_repo
+            branch (str, optional): Specific branch to switch to during refresh
+            cache_strategy (str, optional): Cache strategy - must match original clone strategy
 
         Returns:
             dict: Response with format:
                 {
-                    "status": str,  # "pending", "error"
+                    "status": str,  # "pending", "switched_branch", "error"
                     "path": str,    # (On pending) Cache location being refreshed
                     "message": str, # (On pending) Status message
                     "error": str    # (On error) Error message
+                    "cache_strategy": str  # Strategy used for caching
                 }
 
         Note:
             - Repository must be previously cloned and have completed initial analysis
             - Updates MCP's cached copy, does not modify the source repository
             - Automatically triggers rebuild of repository map with updated files
+            - If branch is specified, switches to that branch after pulling latest changes
+            - cache_strategy should match the strategy used during original clone
             - Operation runs in background, check get_repo_map_content for status
         """
         try:
-            return await repo_manager.refresh_repository(repo_path)
+            # Validate cache_strategy
+            if cache_strategy not in ["shared", "per-branch"]:
+                return {"status": "error", "error": "cache_strategy must be 'shared' or 'per-branch'"}
+                
+            return await repo_manager.refresh_repository(repo_path, branch, cache_strategy)
         except Exception as e:
             logger.error(f"Error refreshing repository: {e}", exc_info=True)
+            return {"status": "error", "error": str(e)}
+
+    @mcp_server.tool(
+        name="list_repository_branches",
+        description="List all cached versions of a repository across different branches. Shows information about each cached branch including paths, strategies, and metadata.",
+    )
+    async def list_repository_branches(repo_url: str) -> dict:
+        """
+        List all cached versions of a repository across different branches.
+
+        This tool scans the MCP cache to find all entries for a given repository URL,
+        showing both shared and per-branch cache entries. Useful for understanding
+        what branches are available and their current status.
+
+        Args:
+            repo_url (str): Repository URL to search for (must match exact URL used in clone_repo)
+
+        Returns:
+            dict: Response with format:
+                {
+                    "status": "success" | "error",
+                    "repo_url": str,  # Repository URL searched
+                    "cached_branches": [  # List of cached branch entries
+                        {
+                            "requested_branch": str,  # Branch that was requested during clone
+                            "current_branch": str,    # Current active branch in the cache
+                            "cache_path": str,        # File system path to cached repository
+                            "cache_strategy": str,    # "shared" or "per-branch"
+                            "last_access": str,       # ISO timestamp of last access
+                            "clone_status": dict,     # Clone operation status
+                            "repo_map_status": dict   # Repository map build status
+                        }
+                    ],
+                    "total_cached": int  # Total number of cached entries found
+                }
+
+        Note:
+            - Only returns repositories that have been cloned via clone_repo
+            - Useful for PR review workflows to see all available branch versions
+            - Shows both active and completed cache entries
+            - Helps identify which cache strategy was used for each entry
+        """
+        try:
+            return await repo_manager.list_repository_branches(repo_url)
+        except Exception as e:
+            logger.error(f"Error listing repository branches: {e}", exc_info=True)
             return {"status": "error", "error": str(e)}
 
     @mcp_server.tool(
         name="clone_repo",
         description="Clone a repository into the MCP server's analysis cache and initiate background analysis. Required before using other analysis endpoints like get_source_repo_map.",
     )
-    async def clone_repo(url: str, branch: Optional[str] = None) -> dict:
+    async def clone_repo(url: str, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
         """
         Clone a repository into MCP server's cache and prepare it for analysis.
 
@@ -170,13 +249,19 @@ REQUIRED PARAMETER GUIDANCE:
         Args:
             url (str): URL of remote repository or path to local repository to analyze
             branch (str, optional): Specific branch to clone for analysis
+            cache_strategy (str, optional): Cache strategy - "shared" (default) or "per-branch"
+                - "shared": One cache entry per repo, switch branches in place
+                - "per-branch": Separate cache entries for each branch (useful for PR reviews)
 
         Returns:
             dict: Response with format:
                 {
-                    "status": "pending",
+                    "status": "pending" | "already_cloned" | "switched_branch" | "error",
                     "path": str,  # Cache location where repo is being cloned
-                    "message": str  # Status message about clone and analysis
+                    "message": str,  # Status message about clone and analysis
+                    "cache_strategy": str,  # Strategy used for caching
+                    "current_branch": str,  # (if applicable) Current active branch
+                    "previous_branch": str,  # (if switched) Previous branch name
                 }
 
         Note:
@@ -184,46 +269,25 @@ REQUIRED PARAMETER GUIDANCE:
             - Does not modify the source repository
             - Repository map building starts automatically after clone completes
             - Use get_source_repo_map to check analysis status and retrieve results
+            - Per-branch strategy allows simultaneous access to different branches
         """
         try:
             # Default branch to "main" if not provided
             if branch is None:
                 branch = "main"
             
-            # Check metadata.json first to see if clone already exists or is in progress
-            from code_understanding.repository.path_utils import get_cache_path
-            cache_path = get_cache_path(repo_manager.cache_dir, url)
-            str_path = str(cache_path.resolve())
+            # Validate cache_strategy
+            if cache_strategy not in ["shared", "per-branch"]:
+                return {"status": "error", "error": "cache_strategy must be 'shared' or 'per-branch'"}
             
-            # Check clone status in metadata
-            repo_status = await repo_manager.cache.get_repository_status(str_path)
-            if repo_status and "clone_status" in repo_status:
-                clone_status = repo_status["clone_status"]
-                if clone_status and clone_status.get("status") == "complete":
-                    return {
-                        "status": "already_cloned",
-                        "path": str_path,
-                        "message": "Repository already cloned and ready",
-                    }
-                elif clone_status and clone_status.get("status") in ["cloning", "copying"]:
-                    return {
-                        "status": "clone_in_progress", 
-                        "path": str_path,
-                        "message": "Repository clone already in progress",
-                    }
-            
-            # Repository not cloned yet, start clone process
-            logger.debug(f"[TRACE] clone_repo: Starting clone_repository for {url} with branch {branch}")
-            result = await repo_manager.clone_repository(url, branch)
+            # Repository clone with new dual cache strategy support
+            logger.debug(f"[TRACE] clone_repo: Starting clone_repository for {url} with branch {branch} using {cache_strategy} strategy")
+            result = await repo_manager.clone_repository(url, branch, cache_strategy)
             logger.debug(f"[TRACE] clone_repo: clone_repository completed for {url}")
             return result
         except Exception as e:
             logger.error(f"Error cloning repository: {e}", exc_info=True)
-            error_response = {"status": "error", "error": str(e)}
-            logger.debug(
-                f"[TRACE] clone_repo: Returning error response: {error_response}"
-            )
-            return error_response
+            return {"status": "error", "error": str(e)}
 
     @mcp_server.tool(
         name="get_source_repo_map",
@@ -271,6 +335,8 @@ NOTE: This tool supports both broad and focused analysis strategies. Response ha
         directories: Optional[List[str]] = None,
         files: Optional[List[str]] = None,
         max_tokens: Optional[int] = None,
+        branch: Optional[str] = None,
+        cache_strategy: str = "shared",
     ) -> dict:
         """
         Retrieve a semantic analysis map of the repository's code structure.
@@ -284,6 +350,8 @@ NOTE: This tool supports both broad and focused analysis strategies. Response ha
             files (List[str], optional): Specific files to analyze. If None, analyzes all files
             directories (List[str], optional): Specific directories to analyze. If None, analyzes all directories
             max_tokens (int, optional): Limit total tokens in analysis. Useful for large repositories
+            branch (str, optional): Specific branch to analyze (only used with per-branch cache strategy)
+            cache_strategy (str, optional): Cache strategy - "shared" (default) or "per-branch"
 
         Returns:
             dict: Response with format:
@@ -318,7 +386,8 @@ NOTE: This tool supports both broad and focused analysis strategies. Response ha
                 directories = []
                 
             return await repo_map_builder.get_repo_map_content(
-                repo_path, files=files, directories=directories, max_tokens=max_tokens
+                repo_path, files=files, directories=directories, max_tokens=max_tokens,
+                branch=branch, cache_strategy=cache_strategy
             )
         except Exception as e:
             logger.error(f"Error getting context: {e}", exc_info=True)
@@ -353,7 +422,8 @@ RESPONSE CHARACTERISTICS:
 NOTE: Use this tool to understand repository structure and choose which directories to analyze in detail.""",
     )
     async def get_repo_structure(
-        repo_path: str, directories: Optional[List[str]] = None, include_files: bool = False
+        repo_path: str, directories: Optional[List[str]] = None, include_files: bool = False,
+        branch: Optional[str] = None, cache_strategy: str = "shared"
     ) -> dict:
         """
         Get repository structure information with optional file listings.
@@ -383,7 +453,8 @@ NOTE: Use this tool to understand repository structure and choose which director
         try:
             # Delegate to the RepoMapBuilder service to handle all the details
             return await repo_map_builder.get_repo_structure(
-                repo_path, directories=directories, include_files=include_files
+                repo_path, directories=directories, include_files=include_files,
+                branch=branch, cache_strategy=cache_strategy
             )
         except Exception as e:
             logger.error(f"Error getting repository structure: {e}", exc_info=True)
@@ -436,6 +507,8 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
         directories: Optional[List[str]] = None,
         limit: int = 50,
         include_metrics: bool = True,
+        branch: Optional[str] = None,
+        cache_strategy: str = "shared",
     ) -> dict:
         """
         Analyze and identify the most structurally significant files in a codebase.
@@ -479,6 +552,8 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
                 directories=directories,
                 limit=limit,
                 include_metrics=include_metrics,
+                branch=branch,
+                cache_strategy=cache_strategy,
             )
         except Exception as e:
             logger.error(
@@ -499,7 +574,7 @@ REQUIRED PARAMETER GUIDANCE:
   - If you cloned using a local directory path, you MUST use that identical local path here
   - Mismatched formats will result in 'Repository not found in cache' errors""",
     )
-    async def get_repo_documentation(repo_path: str) -> dict:
+    async def get_repo_documentation(repo_path: str, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
         """
         Retrieve and analyze repository documentation files.
 
@@ -543,7 +618,7 @@ REQUIRED PARAMETER GUIDANCE:
         """
         try:
             # Call documentation backend module (thin endpoint)
-            return await get_repository_documentation(repo_path)
+            return await get_repository_documentation(repo_path, branch=branch, cache_strategy=cache_strategy)
         except Exception as e:
             logger.error(
                 f"Error retrieving repository documentation: {e}", exc_info=True

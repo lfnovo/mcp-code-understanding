@@ -363,6 +363,8 @@ class RepoMapBuilder:
         directories: List[str] = None,
         max_tokens: int = None,
         max_files_threshold: int = None,
+        branch: Optional[str] = None,
+        cache_strategy: str = "shared",
     ) -> Dict[str, Any]:
         """
         Get repository map content if build is complete.
@@ -372,7 +374,12 @@ class RepoMapBuilder:
         """
         DEFAULT_FILES_THRESHOLD = 5000
 
-        cache_path = str(get_cache_path(self.cache.cache_dir, repo_path).resolve())
+        cache_path = str(get_cache_path(
+            self.cache.cache_dir, 
+            repo_path, 
+            branch if cache_strategy == "per-branch" else None,
+            per_branch=(cache_strategy == "per-branch")
+        ).resolve())
         logger.debug(
             f"Getting repo map content for {repo_path} (max_tokens={max_tokens})"
         )
@@ -500,6 +507,15 @@ class RepoMapBuilder:
                 dir_path = str(Path(abs_file).parent)
                 excluded_by_dir[dir_path] = excluded_by_dir.get(dir_path, 0) + 1
 
+            # Get current branch information
+            current_branch = None
+            try:
+                repo_status = await self.cache.get_repository_status(cache_path)
+                if repo_status:
+                    current_branch = repo_status.get("current_branch")
+            except Exception:
+                pass  # Continue without branch info if we can't get it
+            
             return {
                 "status": "success",
                 "content": content,
@@ -508,6 +524,8 @@ class RepoMapBuilder:
                     "is_complete": len(excluded_files) == 0,
                     "max_tokens": max_tokens,
                     "output_tokens": output_tokens,
+                    "branch": current_branch,
+                    "cache_strategy": cache_strategy,
                 },
             }
         except Exception as e:
@@ -517,7 +535,8 @@ class RepoMapBuilder:
             }
 
     async def get_repo_structure(
-        self, repo_path: str, directories: List[str] = None, include_files: bool = False
+        self, repo_path: str, directories: List[str] = None, include_files: bool = False,
+        branch: Optional[str] = None, cache_strategy: str = "shared"
     ) -> Dict[str, Any]:
         """
         Get repository structure information with optional file listings.
@@ -546,7 +565,12 @@ class RepoMapBuilder:
                 }
         """
         # Convert repo_path to absolute cache path
-        cache_path = str(get_cache_path(self.cache.cache_dir, repo_path).resolve())
+        cache_path = str(get_cache_path(
+            self.cache.cache_dir, 
+            repo_path, 
+            branch if cache_strategy == "per-branch" else None,
+            per_branch=(cache_strategy == "per-branch")
+        ).resolve())
         logger.debug(f"Getting repo structure for {repo_path}")
 
         # Check repository status, similar to get_repo_map_content but only checking clone status

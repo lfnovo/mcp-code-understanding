@@ -335,7 +335,11 @@ class RepositoryManager:
             await self.cache.add_repo(str_path, original_url, branch, cache_strategy)
 
             # Import here to avoid circular dependency
-            from ..context.builder import RepoMapBuilder
+            try:
+                from ..context.builder import RepoMapBuilder
+            except ImportError as e:
+                # Fallback to mock if aider is not available
+                from ..context.mock_builder import RepoMapBuilder
 
             # Start RepoMap build now that clone/copy is complete
             repo_map_builder = RepoMapBuilder(self.cache)
@@ -698,7 +702,11 @@ class RepositoryManager:
                 await self.cache.add_repo(cache_path, original_path, branch, cache_strategy)
 
             # Start repo map build
-            from ..context.builder import RepoMapBuilder
+            try:
+                from ..context.builder import RepoMapBuilder
+            except ImportError as e:
+                # Fallback to mock if aider is not available
+                from ..context.mock_builder import RepoMapBuilder
 
             repo_map_builder = RepoMapBuilder(self.cache)
             await repo_map_builder.start_build(str(cache_path))  # Ensure path is string

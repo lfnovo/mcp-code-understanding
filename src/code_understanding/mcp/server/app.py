@@ -58,26 +58,32 @@ PARAMETER GUIDANCE:
   - Mismatched formats will result in 'Repository not found in cache' errors
 - resource_path: (Optional) Path to the target file or directory within the repository. If not provided, it defaults to the repository's root directory.""",
     )
-    async def get_repo_file_content(repo_path: str, resource_path: Optional[str] = None) -> dict:
+    async def get_repo_file_content(repo_path: str, resource_path: Optional[str] = None, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
         """
         Retrieve file contents or directory listings from a repository.
 
         Args:
             repo_path (str): Path or URL to the repository
             resource_path (str, optional): Path to the target file or directory within the repository. Defaults to the repository root if not provided.
+            branch (str, optional): Specific branch to read from (only used with per-branch cache strategy)
+            cache_strategy (str, optional): Cache strategy - "shared" (default) or "per-branch"
 
         Returns:
             dict: For files:
                 {
                     "type": "file",
                     "path": str,  # Relative path within repository
-                    "content": str  # Complete file contents
+                    "content": str,  # Complete file contents
+                    "branch": str,  # Current branch name
+                    "cache_strategy": str  # Cache strategy used
                 }
                 For directories:
                 {
                     "type": "directory",
                     "path": str,  # Relative path within repository
-                    "contents": List[str]  # List of immediate files and subdirectories
+                    "contents": List[str],  # List of immediate files and subdirectories
+                    "branch": str,  # Current branch name
+                    "cache_strategy": str  # Cache strategy used
                 }
 
         Note:
@@ -90,7 +96,12 @@ PARAMETER GUIDANCE:
 
             # Check metadata.json to ensure repository is cloned and ready
             from code_understanding.repository.path_utils import get_cache_path
-            cache_path = get_cache_path(repo_manager.cache_dir, repo_path)
+            cache_path = get_cache_path(
+                repo_manager.cache_dir, 
+                repo_path, 
+                branch if cache_strategy == "per-branch" else None,
+                per_branch=(cache_strategy == "per-branch")
+            )
             str_path = str(cache_path.resolve())
             
             repo_status = await repo_manager.cache.get_repository_status(str_path)
@@ -107,7 +118,14 @@ PARAMETER GUIDANCE:
             
             # Clone is complete, get repository and access resource
             repo = await repo_manager.get_repository(repo_path)
-            return await repo.get_resource(resource_path)
+            result = await repo.get_resource(resource_path)
+            
+            # Add branch and cache strategy information to response
+            if isinstance(result, dict) and "type" in result:
+                result["branch"] = repo_status.get("current_branch")
+                result["cache_strategy"] = cache_strategy
+            
+            return result
         except Exception as e:
             logger.error(f"Error getting resource: {e}", exc_info=True)
             return {"status": "error", "error": str(e)}
@@ -311,6 +329,8 @@ NOTE: This tool supports both broad and focused analysis strategies. Response ha
         directories: Optional[List[str]] = None,
         files: Optional[List[str]] = None,
         max_tokens: Optional[int] = None,
+        branch: Optional[str] = None,
+        cache_strategy: str = "shared",
     ) -> dict:
         """
         Retrieve a semantic analysis map of the repository's code structure.
@@ -324,6 +344,8 @@ NOTE: This tool supports both broad and focused analysis strategies. Response ha
             files (List[str], optional): Specific files to analyze. If None, analyzes all files
             directories (List[str], optional): Specific directories to analyze. If None, analyzes all directories
             max_tokens (int, optional): Limit total tokens in analysis. Useful for large repositories
+            branch (str, optional): Specific branch to analyze (only used with per-branch cache strategy)
+            cache_strategy (str, optional): Cache strategy - "shared" (default) or "per-branch"
 
         Returns:
             dict: Response with format:
@@ -358,7 +380,8 @@ NOTE: This tool supports both broad and focused analysis strategies. Response ha
                 directories = []
                 
             return await repo_map_builder.get_repo_map_content(
-                repo_path, files=files, directories=directories, max_tokens=max_tokens
+                repo_path, files=files, directories=directories, max_tokens=max_tokens,
+                branch=branch, cache_strategy=cache_strategy
             )
         except Exception as e:
             logger.error(f"Error getting context: {e}", exc_info=True)
@@ -393,7 +416,8 @@ RESPONSE CHARACTERISTICS:
 NOTE: Use this tool to understand repository structure and choose which directories to analyze in detail.""",
     )
     async def get_repo_structure(
-        repo_path: str, directories: Optional[List[str]] = None, include_files: bool = False
+        repo_path: str, directories: Optional[List[str]] = None, include_files: bool = False,
+        branch: Optional[str] = None, cache_strategy: str = "shared"
     ) -> dict:
         """
         Get repository structure information with optional file listings.
@@ -423,7 +447,8 @@ NOTE: Use this tool to understand repository structure and choose which director
         try:
             # Delegate to the RepoMapBuilder service to handle all the details
             return await repo_map_builder.get_repo_structure(
-                repo_path, directories=directories, include_files=include_files
+                repo_path, directories=directories, include_files=include_files,
+                branch=branch, cache_strategy=cache_strategy
             )
         except Exception as e:
             logger.error(f"Error getting repository structure: {e}", exc_info=True)

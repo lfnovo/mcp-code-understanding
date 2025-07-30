@@ -89,17 +89,23 @@ def get_cache_path(cache_dir: Path, repo_path: str, branch: Optional[str] = None
     # Ensure cache_dir is absolute
     cache_dir = Path(cache_dir).resolve()
 
+    # Sanitize branch name for use in filesystem paths
+    safe_branch = None
+    if branch and per_branch:
+        # Replace problematic characters in branch names
+        safe_branch = branch.replace('/', '-').replace('\\', '-').replace(':', '-')
+
     if is_git_url(repo_path):
         # For GitHub URLs
         try:
             org, repo, ref = parse_github_url(repo_path)
             
             # Include branch in hash if per_branch strategy
-            if per_branch and branch:
-                url_with_branch = f"{repo_path}@{branch}"
+            if per_branch and safe_branch:
+                url_with_branch = f"{repo_path}@{branch}"  # Use original branch for hash consistency
                 url_hash = hashlib.sha256(url_with_branch.encode()).hexdigest()[:8]
-                # Include branch name in path for clarity
-                return (cache_dir / "github" / org / f"{repo}-{branch}-{url_hash}").resolve()
+                # Include sanitized branch name in path for clarity
+                return (cache_dir / "github" / org / f"{repo}-{safe_branch}-{url_hash}").resolve()
             else:
                 # Shared strategy - same path regardless of branch
                 url_hash = hashlib.sha256(repo_path.encode()).hexdigest()[:8]
@@ -107,10 +113,10 @@ def get_cache_path(cache_dir: Path, repo_path: str, branch: Optional[str] = None
                 
         except ValueError:
             # Fall back to generic git handling
-            if per_branch and branch:
-                url_with_branch = f"{repo_path}@{branch}"
+            if per_branch and safe_branch:
+                url_with_branch = f"{repo_path}@{branch}"  # Use original branch for hash consistency
                 url_hash = hashlib.sha256(url_with_branch.encode()).hexdigest()[:8]
-                return (cache_dir / "git" / f"{branch}-{url_hash}").resolve()
+                return (cache_dir / "git" / f"{safe_branch}-{url_hash}").resolve()
             else:
                 url_hash = hashlib.sha256(repo_path.encode()).hexdigest()[:8]
                 return (cache_dir / "git" / url_hash).resolve()

@@ -264,6 +264,7 @@ class RepositoryManager:
         str_path: str,
         branch: Optional[str] = None,
         is_local: bool = False,
+        cache_strategy: Optional[str] = None,
     ):
         """Internal method to perform the actual clone or copy"""
         # Store original URL for metadata/logs
@@ -331,7 +332,7 @@ class RepositoryManager:
             )
 
             # Register the repo with original URL and branch information
-            await self.cache.add_repo(str_path, original_url, branch)
+            await self.cache.add_repo(str_path, original_url, branch, cache_strategy)
 
             # Import here to avoid circular dependency
             from ..context.builder import RepoMapBuilder
@@ -468,7 +469,7 @@ class RepositoryManager:
                             logger.debug(f"Successfully switched from {current_branch} to {branch}")
                             
                             # Update metadata with new branch
-                            await self.cache.add_repo(str_path, url, branch)
+                            await self.cache.add_repo(str_path, url, branch, cache_strategy)
                             
                             return {
                                 "status": "switched_branch",
@@ -516,7 +517,7 @@ class RepositoryManager:
 
         try:
             # Start clone in background
-            asyncio.create_task(self._do_clone(url, str_path, branch))
+            asyncio.create_task(self._do_clone(url, str_path, branch, False, cache_strategy))
 
             return {
                 "status": "pending",
@@ -572,7 +573,7 @@ class RepositoryManager:
                     }
 
             # Start refresh in background
-            asyncio.create_task(self._do_refresh(path, str_path, branch))
+            asyncio.create_task(self._do_refresh(path, str_path, branch, cache_strategy))
 
             return {
                 "status": "pending",
@@ -613,10 +614,8 @@ class RepositoryManager:
                         except Exception:
                             current_branch = "unknown"
                         
-                        # Determine cache strategy based on path structure
-                        cache_path_obj = Path(cache_path)
-                        # If path contains branch name, it's per-branch strategy
-                        cache_strategy = "per-branch" if repo_metadata.branch and repo_metadata.branch in cache_path_obj.name else "shared"
+                        # Get cache strategy from metadata (preferred) or fall back to detection
+                        cache_strategy = repo_metadata.cache_strategy or "shared"
                         
                         cached_branches.append({
                             "requested_branch": repo_metadata.branch,
@@ -639,7 +638,7 @@ class RepositoryManager:
             logger.error(f"Error listing repository branches: {str(e)}", exc_info=True)
             return {"status": "error", "error": str(e)}
 
-    async def _do_refresh(self, original_path: str, cache_path: str, branch: Optional[str] = None):
+    async def _do_refresh(self, original_path: str, cache_path: str, branch: Optional[str] = None, cache_strategy: Optional[str] = None):
         """Internal method to perform the actual refresh"""
         try:
             # Update status to refreshing
@@ -696,7 +695,7 @@ class RepositoryManager:
 
             # Update branch information if a branch was specified
             if branch and is_git:
-                await self.cache.add_repo(cache_path, original_path, branch)
+                await self.cache.add_repo(cache_path, original_path, branch, cache_strategy)
 
             # Start repo map build
             from ..context.builder import RepoMapBuilder

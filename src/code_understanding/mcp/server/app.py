@@ -122,7 +122,7 @@ REQUIRED PARAMETER GUIDANCE:
   - If you cloned using a local directory path, you MUST use that identical local path here
   - Mismatched formats will result in 'Repository not found in cache' errors""",
     )
-    async def refresh_repo(repo_path: str, branch: Optional[str] = None) -> dict:
+    async def refresh_repo(repo_path: str, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
         """
         Update a previously cloned repository in MCP's cache and refresh its analysis.
 
@@ -134,6 +134,7 @@ REQUIRED PARAMETER GUIDANCE:
         Args:
             repo_path (str): Path or URL matching what was originally provided to clone_repo
             branch (str, optional): Specific branch to switch to during refresh
+            cache_strategy (str, optional): Cache strategy - must match original clone strategy
 
         Returns:
             dict: Response with format:
@@ -142,6 +143,7 @@ REQUIRED PARAMETER GUIDANCE:
                     "path": str,    # (On pending) Cache location being refreshed
                     "message": str, # (On pending) Status message
                     "error": str    # (On error) Error message
+                    "cache_strategy": str  # Strategy used for caching
                 }
 
         Note:
@@ -149,19 +151,70 @@ REQUIRED PARAMETER GUIDANCE:
             - Updates MCP's cached copy, does not modify the source repository
             - Automatically triggers rebuild of repository map with updated files
             - If branch is specified, switches to that branch after pulling latest changes
+            - cache_strategy should match the strategy used during original clone
             - Operation runs in background, check get_repo_map_content for status
         """
         try:
-            return await repo_manager.refresh_repository(repo_path, branch)
+            # Validate cache_strategy
+            if cache_strategy not in ["shared", "per-branch"]:
+                return {"status": "error", "error": "cache_strategy must be 'shared' or 'per-branch'"}
+                
+            return await repo_manager.refresh_repository(repo_path, branch, cache_strategy)
         except Exception as e:
             logger.error(f"Error refreshing repository: {e}", exc_info=True)
+            return {"status": "error", "error": str(e)}
+
+    @mcp_server.tool(
+        name="list_repository_branches",
+        description="List all cached versions of a repository across different branches. Shows information about each cached branch including paths, strategies, and metadata.",
+    )
+    async def list_repository_branches(repo_url: str) -> dict:
+        """
+        List all cached versions of a repository across different branches.
+
+        This tool scans the MCP cache to find all entries for a given repository URL,
+        showing both shared and per-branch cache entries. Useful for understanding
+        what branches are available and their current status.
+
+        Args:
+            repo_url (str): Repository URL to search for (must match exact URL used in clone_repo)
+
+        Returns:
+            dict: Response with format:
+                {
+                    "status": "success" | "error",
+                    "repo_url": str,  # Repository URL searched
+                    "cached_branches": [  # List of cached branch entries
+                        {
+                            "requested_branch": str,  # Branch that was requested during clone
+                            "current_branch": str,    # Current active branch in the cache
+                            "cache_path": str,        # File system path to cached repository
+                            "cache_strategy": str,    # "shared" or "per-branch"
+                            "last_access": str,       # ISO timestamp of last access
+                            "clone_status": dict,     # Clone operation status
+                            "repo_map_status": dict   # Repository map build status
+                        }
+                    ],
+                    "total_cached": int  # Total number of cached entries found
+                }
+
+        Note:
+            - Only returns repositories that have been cloned via clone_repo
+            - Useful for PR review workflows to see all available branch versions
+            - Shows both active and completed cache entries
+            - Helps identify which cache strategy was used for each entry
+        """
+        try:
+            return await repo_manager.list_repository_branches(repo_url)
+        except Exception as e:
+            logger.error(f"Error listing repository branches: {e}", exc_info=True)
             return {"status": "error", "error": str(e)}
 
     @mcp_server.tool(
         name="clone_repo",
         description="Clone a repository into the MCP server's analysis cache and initiate background analysis. Required before using other analysis endpoints like get_source_repo_map.",
     )
-    async def clone_repo(url: str, branch: Optional[str] = None) -> dict:
+    async def clone_repo(url: str, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
         """
         Clone a repository into MCP server's cache and prepare it for analysis.
 
@@ -172,13 +225,19 @@ REQUIRED PARAMETER GUIDANCE:
         Args:
             url (str): URL of remote repository or path to local repository to analyze
             branch (str, optional): Specific branch to clone for analysis
+            cache_strategy (str, optional): Cache strategy - "shared" (default) or "per-branch"
+                - "shared": One cache entry per repo, switch branches in place
+                - "per-branch": Separate cache entries for each branch (useful for PR reviews)
 
         Returns:
             dict: Response with format:
                 {
-                    "status": "pending",
+                    "status": "pending" | "already_cloned" | "switched_branch" | "error",
                     "path": str,  # Cache location where repo is being cloned
-                    "message": str  # Status message about clone and analysis
+                    "message": str,  # Status message about clone and analysis
+                    "cache_strategy": str,  # Strategy used for caching
+                    "current_branch": str,  # (if applicable) Current active branch
+                    "previous_branch": str,  # (if switched) Previous branch name
                 }
 
         Note:
@@ -186,83 +245,25 @@ REQUIRED PARAMETER GUIDANCE:
             - Does not modify the source repository
             - Repository map building starts automatically after clone completes
             - Use get_source_repo_map to check analysis status and retrieve results
+            - Per-branch strategy allows simultaneous access to different branches
         """
         try:
             # Default branch to "main" if not provided
             if branch is None:
                 branch = "main"
             
-            # Check metadata.json first to see if clone already exists or is in progress
-            from code_understanding.repository.path_utils import get_cache_path
-            cache_path = get_cache_path(repo_manager.cache_dir, url)
-            str_path = str(cache_path.resolve())
+            # Validate cache_strategy
+            if cache_strategy not in ["shared", "per-branch"]:
+                return {"status": "error", "error": "cache_strategy must be 'shared' or 'per-branch'"}
             
-            # Check clone status in metadata
-            repo_status = await repo_manager.cache.get_repository_status(str_path)
-            if repo_status and "clone_status" in repo_status:
-                clone_status = repo_status["clone_status"]
-                if clone_status and clone_status.get("status") == "complete":
-                    # Check if we need to switch branches
-                    stored_branch = repo_status.get("requested_branch")
-                    current_branch = repo_status.get("current_branch")
-                    
-                    if branch and stored_branch != branch:
-                        # Switch to the requested branch
-                        try:
-                            from git import Repo
-                            repo = Repo(cache_path)
-                            
-                            # Try to checkout the requested branch
-                            try:
-                                repo.git.checkout(branch)
-                                logger.debug(f"Successfully switched from {current_branch} to {branch}")
-                                
-                                # Update metadata with new branch
-                                await repo_manager.cache.add_repo(str_path, url, branch)
-                                
-                                return {
-                                    "status": "switched_branch",
-                                    "path": str_path,
-                                    "message": f"Switched from {stored_branch} to {branch}",
-                                    "previous_branch": stored_branch,
-                                    "current_branch": branch
-                                }
-                            except Exception as checkout_error:
-                                return {
-                                    "status": "error",
-                                    "error": f"Failed to switch to branch {branch}: {str(checkout_error)}"
-                                }
-                        except Exception as e:
-                            return {
-                                "status": "error", 
-                                "error": f"Failed to access repository for branch switching: {str(e)}"
-                            }
-                    else:
-                        return {
-                            "status": "already_cloned",
-                            "path": str_path,
-                            "message": "Repository already cloned and ready",
-                            "current_branch": stored_branch
-                        }
-                elif clone_status and clone_status.get("status") in ["cloning", "copying"]:
-                    return {
-                        "status": "clone_in_progress", 
-                        "path": str_path,
-                        "message": "Repository clone already in progress",
-                    }
-            
-            # Repository not cloned yet, start clone process
-            logger.debug(f"[TRACE] clone_repo: Starting clone_repository for {url} with branch {branch}")
-            result = await repo_manager.clone_repository(url, branch)
+            # Repository clone with new dual cache strategy support
+            logger.debug(f"[TRACE] clone_repo: Starting clone_repository for {url} with branch {branch} using {cache_strategy} strategy")
+            result = await repo_manager.clone_repository(url, branch, cache_strategy)
             logger.debug(f"[TRACE] clone_repo: clone_repository completed for {url}")
             return result
         except Exception as e:
             logger.error(f"Error cloning repository: {e}", exc_info=True)
-            error_response = {"status": "error", "error": str(e)}
-            logger.debug(
-                f"[TRACE] clone_repo: Returning error response: {error_response}"
-            )
-            return error_response
+            return {"status": "error", "error": str(e)}
 
     @mcp_server.tool(
         name="get_source_repo_map",

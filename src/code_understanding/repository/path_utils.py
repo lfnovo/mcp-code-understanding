@@ -60,8 +60,32 @@ def parse_github_url(url: str) -> Tuple[str, str, Optional[str]]:
     return org, repo, ref
 
 
-def get_cache_path(cache_dir: Path, repo_path: str) -> Path:
-    """Get deterministic cache path for a repository."""
+def get_cache_path(cache_dir: Path, repo_path: str, branch: Optional[str] = None, per_branch: bool = False) -> Path:
+    """Get deterministic cache path for a repository.
+    
+    Args:
+        cache_dir: Base cache directory
+        repo_path: Repository URL or path
+        branch: Branch name (only used if per_branch=True)
+        per_branch: If True, creates separate cache entries per branch
+        
+    Returns:
+        Path: Deterministic cache path for the repository
+        
+    Examples:
+        # Shared strategy (default) - same path regardless of branch
+        get_cache_path(cache, "https://github.com/org/repo") 
+        get_cache_path(cache, "https://github.com/org/repo", branch="main")
+        get_cache_path(cache, "https://github.com/org/repo", branch="feature")
+        # All return: cache/github/org/repo-12345678
+        
+        # Per-branch strategy - different paths for different branches
+        get_cache_path(cache, "https://github.com/org/repo", branch="main", per_branch=True)
+        # Returns: cache/github/org/repo-main-87654321
+        
+        get_cache_path(cache, "https://github.com/org/repo", branch="feature", per_branch=True)  
+        # Returns: cache/github/org/repo-feature-abcdef12
+    """
     # Ensure cache_dir is absolute
     cache_dir = Path(cache_dir).resolve()
 
@@ -69,15 +93,29 @@ def get_cache_path(cache_dir: Path, repo_path: str) -> Path:
         # For GitHub URLs
         try:
             org, repo, ref = parse_github_url(repo_path)
-            # Include ref in hash if present
-            url_hash = hashlib.sha256(repo_path.encode()).hexdigest()[:8]
-            return (cache_dir / "github" / org / f"{repo}-{url_hash}").resolve()
+            
+            # Include branch in hash if per_branch strategy
+            if per_branch and branch:
+                url_with_branch = f"{repo_path}@{branch}"
+                url_hash = hashlib.sha256(url_with_branch.encode()).hexdigest()[:8]
+                # Include branch name in path for clarity
+                return (cache_dir / "github" / org / f"{repo}-{branch}-{url_hash}").resolve()
+            else:
+                # Shared strategy - same path regardless of branch
+                url_hash = hashlib.sha256(repo_path.encode()).hexdigest()[:8]
+                return (cache_dir / "github" / org / f"{repo}-{url_hash}").resolve()
+                
         except ValueError:
             # Fall back to generic git handling
-            url_hash = hashlib.sha256(repo_path.encode()).hexdigest()[:8]
-            return (cache_dir / "git" / url_hash).resolve()
+            if per_branch and branch:
+                url_with_branch = f"{repo_path}@{branch}"
+                url_hash = hashlib.sha256(url_with_branch.encode()).hexdigest()[:8]
+                return (cache_dir / "git" / f"{branch}-{url_hash}").resolve()
+            else:
+                url_hash = hashlib.sha256(repo_path.encode()).hexdigest()[:8]
+                return (cache_dir / "git" / url_hash).resolve()
     else:
-        # For local paths
+        # For local paths - per_branch doesn't apply to local repos
         abs_path = str(Path(repo_path).resolve())
         path_hash = hashlib.sha256(abs_path.encode()).hexdigest()[:8]
         return (cache_dir / "local" / path_hash).resolve()

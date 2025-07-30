@@ -311,6 +311,18 @@ class RepositoryManager:
                 await asyncio.to_thread(
                     Repo.clone_from, clone_url, cache_path, branch=branch
                 )
+                
+                # Verify the repository is on the correct branch after cloning
+                if not is_local and branch:
+                    try:
+                        repo = Repo(cache_path)
+                        if not repo.head.is_detached and repo.active_branch.name != branch:
+                            # If not on the requested branch, check it out
+                            logger.debug(f"Repository cloned to {repo.active_branch.name}, checking out {branch}")
+                            repo.git.checkout(branch)
+                            logger.debug(f"Successfully checked out branch: {branch}")
+                    except Exception as e:
+                        logger.warning(f"Could not verify/checkout branch {branch}: {e}")
 
             # Update success status
             await self.cache.update_clone_status(
@@ -318,8 +330,8 @@ class RepositoryManager:
                 {"status": "complete", "completed_at": datetime.now().isoformat()},
             )
 
-            # Register the repo with original URL
-            await self.cache.add_repo(str_path, original_url)
+            # Register the repo with original URL and branch information
+            await self.cache.add_repo(str_path, original_url, branch)
 
             # Import here to avoid circular dependency
             from ..context.builder import RepoMapBuilder

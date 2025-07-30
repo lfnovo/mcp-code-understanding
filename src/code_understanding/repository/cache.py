@@ -22,6 +22,7 @@ class RepositoryMetadata:
     path: str
     url: Optional[str]
     last_access: str  # Changed from float to str for ISO format
+    branch: Optional[str] = None  # Track the requested branch for cloning
     clone_status: Dict[str, Any] = None
     repo_map_status: Optional[Dict[str, Any]] = None
 
@@ -188,19 +189,21 @@ class RepositoryCache:
 
             return True
 
-    async def add_repo(self, path: str, url: Optional[str] = None):
+    async def add_repo(self, path: str, url: Optional[str] = None, branch: Optional[str] = None):
         """Register a new repository after successful clone"""
         with self._file_lock():
             metadata = self._sync_metadata()
             if path in metadata:
                 # Update existing metadata
                 metadata[path].url = url
+                metadata[path].branch = branch
                 metadata[path].last_access = datetime.now().isoformat()
             else:
                 # Create new metadata only if it doesn't exist
                 metadata[path] = RepositoryMetadata(
                     path=path,
                     url=url,
+                    branch=branch,
                     last_access=datetime.now().isoformat(),
                     repo_map_status=None,
                 )
@@ -285,7 +288,23 @@ class RepositoryCache:
                 return {"status": "error", "error": "Repository not found in cache"}
 
             repo_metadata = metadata[path]
-            return {
+            status = {
                 "clone_status": repo_metadata.clone_status,
                 "repo_map_status": repo_metadata.repo_map_status,
+                "requested_branch": repo_metadata.branch,
             }
+            
+            # Try to get the current active branch from the git repository
+            try:
+                from git import Repo
+                repo = Repo(path)
+                if repo.head.is_detached:
+                    status["current_branch"] = f"detached at {repo.head.commit.hexsha[:8]}"
+                else:
+                    status["current_branch"] = repo.active_branch.name
+            except Exception as e:
+                # If we can't get git info, it might not be a git repo or might have issues
+                status["current_branch"] = None
+                status["branch_error"] = str(e)
+            
+            return status

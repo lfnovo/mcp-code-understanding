@@ -167,7 +167,7 @@ class RepositoryManager:
                 )
                 self.repositories[str_path] = repository
 
-                # Initialize metadata with not_started status
+                # Initialize metadata with cloning status for Git repositories
                 with self.cache._file_lock():
                     metadata_dict = self.cache._read_metadata()
                     if str_path not in metadata_dict:
@@ -175,6 +175,12 @@ class RepositoryManager:
                             path=str_path,
                             url=path,
                             last_access=datetime.now().isoformat(),
+                            clone_status={
+                                "status": "cloning",
+                                "started_at": datetime.now().isoformat(),
+                                "completed_at": None,
+                                "error": None,
+                            }
                         )
                     self.cache._write_metadata(metadata_dict)
 
@@ -210,7 +216,7 @@ class RepositoryManager:
                 )
                 self.repositories[str_path] = repository
 
-                # Initialize metadata with not_started status
+                # Initialize metadata with copying status for local paths
                 with self.cache._file_lock():
                     metadata_dict = self.cache._read_metadata()
                     if str_path not in metadata_dict:
@@ -218,6 +224,12 @@ class RepositoryManager:
                             path=str_path,
                             url=path,
                             last_access=datetime.now().isoformat(),
+                            clone_status={
+                                "status": "copying",
+                                "started_at": datetime.now().isoformat(),
+                                "completed_at": None,
+                                "error": None,
+                            }
                         )
                     self.cache._write_metadata(metadata_dict)
 
@@ -432,6 +444,15 @@ class RepositoryManager:
             # Start RepoMap build now that clone/copy is complete
             repo_map_builder = RepoMapBuilder(self.cache)
             await repo_map_builder.start_build(str_path)
+            
+            # Start critical files analysis in background
+            try:
+                from ..analysis.complexity import CodeComplexityAnalyzer
+                analyzer = CodeComplexityAnalyzer(self, repo_map_builder)
+                asyncio.create_task(analyzer.analyze_and_cache_critical_files(str_path))
+                logger.debug(f"Started background critical files analysis for {str_path}")
+            except Exception as e:
+                logger.warning(f"Could not start critical files analysis: {str(e)}")
 
         except Exception as e:
             logger.error(
@@ -739,10 +760,13 @@ class RepositoryManager:
                 {"status": "refreshing", "started_at": datetime.now().isoformat()},
             )
 
-            # Remove repo map status entirely
+            # Remove repo map status and critical files analysis cache entirely
             await self.cache.update_repo_map_status(
                 cache_path, None
             )  # Ensure path is string
+            await self.cache.update_critical_files_analysis(
+                cache_path, None
+            )  # Clear critical files cache on refresh
 
             is_git = is_git_url(original_path)
             if is_git:
@@ -798,6 +822,15 @@ class RepositoryManager:
 
             repo_map_builder = RepoMapBuilder(self.cache)
             await repo_map_builder.start_build(str(cache_path))  # Ensure path is string
+            
+            # Start critical files analysis after refresh
+            try:
+                from ..analysis.complexity import CodeComplexityAnalyzer
+                analyzer = CodeComplexityAnalyzer(self, repo_map_builder)
+                asyncio.create_task(analyzer.analyze_and_cache_critical_files(cache_path))
+                logger.debug(f"Started background critical files analysis after refresh for {cache_path}")
+            except Exception as e:
+                logger.warning(f"Could not start critical files analysis after refresh: {str(e)}")
 
         except Exception as e:
             logger.error(f"Refresh failed for {original_path}: {str(e)}")

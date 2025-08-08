@@ -590,12 +590,99 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
         try:
             # Import and initialize the analyzer
             from code_understanding.analysis.complexity import CodeComplexityAnalyzer
+            from code_understanding.repository.path_utils import get_cache_path
+            import git
 
             analyzer = CodeComplexityAnalyzer(repo_manager, repo_map_builder)
+            
+            # Get cache path to check for cached analysis
+            cache_path = get_cache_path(repo_manager.cache_dir, repo_path)
+            cache_path_str = str(cache_path.resolve())
+            
+            # Check if we have cached results
+            with repo_manager.cache._file_lock():
+                metadata_dict = repo_manager.cache._read_metadata()
+                if cache_path_str in metadata_dict:
+                    repo_metadata = metadata_dict[cache_path_str]
+                    cached_analysis = repo_metadata.critical_files_analysis
+                    
+                    if cached_analysis:
+                        # Check cache status
+                        if cached_analysis.get("status") == "analyzing":
+                            logger.info(f"Critical files analysis is in progress for {repo_path}")
+                            return {
+                                "status": "waiting",
+                                "message": "Critical files analysis is running in background. Please try again in a few moments.",
+                            }
+                        
+                        elif cached_analysis.get("status") == "complete":
+                            # Check if cache is valid (only if specific files/directories were not provided)
+                            if files is None and directories is None:
+                                cached_params = cached_analysis.get("parameters", {})
+                                if cached_params.get("files") is None and cached_params.get("directories") is None:
+                                    # Cache is valid for this request
+                                    logger.info(f"Using cached critical files analysis for {repo_path}")
+                                    
+                                    # Get current commit hash to verify cache validity
+                                    current_commit = None
+                                    try:
+                                        repo = git.Repo(cache_path_str)
+                                        current_commit = str(repo.head.commit.hexsha)
+                                    except (git.InvalidGitRepositoryError, git.NoSuchPathError):
+                                        # For local folders, we'll trust the cache
+                                        # (could enhance with better directory hash comparison)
+                                        pass
+                                    
+                                    cached_commit = cached_analysis.get("commit_hash")
+                                    
+                                    # If commits match (or it's a local folder), use cache
+                                    if current_commit is None or current_commit == cached_commit:
+                                        cached_results = cached_analysis.get("results", {})
+                                        files_list = cached_results.get("files", [])
+                                        
+                                        # Apply limit if specified
+                                        limited_files = files_list[:limit] if limit > 0 else files_list
+                                        
+                                        return {
+                                            "status": "success",
+                                            "files": limited_files,
+                                            "total_files_analyzed": cached_results.get("total_files_analyzed", 0),
+                                            "files_with_analysis": cached_results.get("files_with_analysis", 0),
+                                            "files_without_analysis": cached_results.get("files_without_analysis", 0),
+                                            "results_truncated": limit > 0 and len(files_list) > limit,
+                                            "_cache_used": True,  # Debug flag
+                                            "_cached_at": cached_analysis.get("analyzed_at"),
+                                        }
+                                    else:
+                                        logger.info(f"Cache is stale (commit changed), running fresh analysis")
 
-            # Delegate to the specialized CodeComplexityAnalyzer module
-            # Note: The analyzer doesn't use branch/cache_strategy parameters
-            # They're only used for cache path resolution which happens internally
+            # Before running fresh analysis, check if clone/copy just completed
+            # to avoid duplicate analysis while background task is starting
+            with repo_manager.cache._file_lock():
+                metadata_dict = repo_manager.cache._read_metadata()
+                if cache_path_str in metadata_dict:
+                    repo_metadata = metadata_dict[cache_path_str]
+                    clone_status = repo_metadata.clone_status
+                    
+                    # Check if clone completed very recently (within last 30 seconds)
+                    if clone_status and clone_status.get("status") == "complete":
+                        completed_at = clone_status.get("completed_at")
+                        if completed_at:
+                            from datetime import datetime, timedelta
+                            try:
+                                completed_time = datetime.fromisoformat(completed_at)
+                                if datetime.now() - completed_time < timedelta(seconds=30):
+                                    # Clone just completed, background analysis should be starting
+                                    logger.info(f"Repository was just cloned/copied, background analysis should be starting")
+                                    return {
+                                        "status": "waiting", 
+                                        "message": "Repository setup just completed. Critical files analysis is starting in background. Please try again in a few moments.",
+                                    }
+                            except:
+                                pass
+            
+            # No valid cache found or cache is stale/incomplete, run fresh analysis
+            logger.info(f"Running fresh critical files analysis for {repo_path}")
             return await analyzer.analyze_repo_critical_files(
                 repo_path=repo_path,
                 files=files,

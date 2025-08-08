@@ -28,6 +28,7 @@ class RepositoryMetadata:
     cache_strategy: Optional[str] = None  # Track which cache strategy was used
     clone_status: Dict[str, Any] = None
     repo_map_status: Optional[Dict[str, Any]] = None
+    critical_files_analysis: Optional[Dict[str, Any]] = None  # Cache for critical files analysis
 
     def __post_init__(self):
         if self.clone_status is None:
@@ -114,6 +115,7 @@ class RepositoryCache:
                 "cache_strategy": meta.cache_strategy,
                 "clone_status": meta.clone_status,
                 "repo_map_status": meta.repo_map_status,
+                "critical_files_analysis": meta.critical_files_analysis,
             }
             for path, meta in metadata.items()
         }
@@ -138,6 +140,7 @@ class RepositoryCache:
                         cache_strategy=info.get("cache_strategy"),
                         clone_status=info.get("clone_status"),
                         repo_map_status=info.get("repo_map_status"),
+                        critical_files_analysis=info.get("critical_files_analysis"),
                     )
             except json.JSONDecodeError:
                 logger.warning(f"Error decoding JSON from metadata file {self.metadata_file}. Starting with empty metadata.")
@@ -288,6 +291,17 @@ class RepositoryCache:
                     path=path, url=None, last_access=datetime.now().isoformat()
                 )
             metadata[path].repo_map_status = status
+            self._write_metadata(metadata)
+
+    async def update_critical_files_analysis(self, path: str, analysis: Dict[str, Any]):
+        """Update critical files analysis cache"""
+        with self._file_lock():
+            metadata = self._read_metadata()
+            if path not in metadata:
+                metadata[path] = RepositoryMetadata(
+                    path=path, url=None, last_access=datetime.now().isoformat()
+                )
+            metadata[path].critical_files_analysis = analysis
             self._write_metadata(metadata)
 
     async def get_repository_status(self, path: str) -> Dict[str, Any]:

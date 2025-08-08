@@ -15,9 +15,13 @@ def _run_lizard_analysis(valid_files: List[str], num_threads: int) -> List[lizar
     This prevents the synchronous, multi-threaded CPU-bound task from
     blocking the main asyncio event loop of the server.
     """
-    logger.debug(f"Running lizard analysis on {len(valid_files)} files with {num_threads} threads in a separate process.")
+    if num_threads == 1:
+        logger.debug(f"Running lizard analysis on {len(valid_files)} files in single-threaded mode (stable for containers)")
+    else:
+        logger.debug(f"Running lizard analysis on {len(valid_files)} files with {num_threads} threads")
     # lizard.analyze_files returns an iterator, so we convert it to a list
     # to ensure the analysis is complete before returning from the process.
+    # Note: threads=1 forces single-threaded mode which is more stable in containers
     return list(lizard.analyze_files(valid_files, threads=num_threads))
 
 class CodeComplexityAnalyzer:
@@ -185,19 +189,40 @@ class CodeComplexityAnalyzer:
             num_threads = min(
                 os.cpu_count() or 4, 8
             )  # Use at most 8 threads, or fewer if CPU count is lower
-            logger.debug(
-                f"Analyzing {len(valid_files)} files using {num_threads} threads via ProcessPoolExecutor"
-            )
-
+            
             # Get the current asyncio event loop
             loop = asyncio.get_running_loop()
 
-            # Run the synchronous, multi-threaded lizard analysis in a separate process
-            # to avoid blocking the asyncio event loop.
-            with concurrent.futures.ProcessPoolExecutor() as pool:
-                file_analyses = await loop.run_in_executor(
-                    pool, _run_lizard_analysis, valid_files, num_threads
-                )
+            # Check if we're running in a container (Docker)
+            # In containers, ProcessPoolExecutor can hang, so use ThreadPoolExecutor
+            in_container = os.path.exists('/.dockerenv') or os.environ.get('CONTAINER', False)
+            
+            if in_container:
+                logger.debug(f"Running in container, using single-threaded lizard analysis on {len(valid_files)} files")
+                # Use ThreadPoolExecutor with single-threaded lizard in containers to avoid deadlocks
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    file_analyses = await loop.run_in_executor(
+                        pool, _run_lizard_analysis, valid_files, 1  # Force single-threaded mode in container
+                    )
+            else:
+                logger.debug(f"Analyzing {len(valid_files)} files using {num_threads} threads via ProcessPoolExecutor")
+                # Run the synchronous, multi-threaded lizard analysis in a separate process
+                # to avoid blocking the asyncio event loop.
+                with concurrent.futures.ProcessPoolExecutor(max_workers=1) as pool:
+                    try:
+                        # Add timeout to prevent hanging
+                        file_analyses = await asyncio.wait_for(
+                            loop.run_in_executor(
+                                pool, _run_lizard_analysis, valid_files, num_threads
+                            ),
+                            timeout=300  # 5 minute timeout
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error(f"Lizard analysis timed out after 5 minutes for {len(valid_files)} files")
+                        return {
+                            "status": "error",
+                            "error": "Complexity analysis timed out. Repository may be too large.",
+                        }
 
 
             # NOTE: Lizard will silently skip files that it cannot process (no parser available)
@@ -291,3 +316,129 @@ class CodeComplexityAnalyzer:
         return (
             (2.0 * function_count) + (1.5 * total_ccn) + (1.2 * max_ccn) + (0.05 * nloc)
         )
+
+    async def analyze_and_cache_critical_files(self, cache_path: str):
+        """
+        Analyze critical files in background and cache the results.
+        This runs after repository clone/copy is complete.
+        
+        Args:
+            cache_path: The absolute path to the cached repository
+        """
+        from datetime import datetime
+        from pathlib import Path
+        import git
+        
+        logger.info(f"Starting background critical files analysis for {cache_path}")
+        
+        try:
+            # Check if analysis is already running to prevent duplicates
+            with self.repo_manager.cache._file_lock():
+                metadata = self.repo_manager.cache._read_metadata()
+                if cache_path in metadata:
+                    existing_analysis = metadata[cache_path].critical_files_analysis
+                    if existing_analysis and existing_analysis.get("status") == "analyzing":
+                        logger.warning(f"Analysis already in progress for {cache_path}, skipping duplicate")
+                        return
+            
+            # Update status to analyzing
+            await self.repo_manager.cache.update_critical_files_analysis(
+                cache_path,
+                {
+                    "status": "analyzing",
+                    "started_at": datetime.now().isoformat(),
+                }
+            )
+            
+            # Get current git commit hash if it's a git repo
+            commit_hash = None
+            try:
+                repo = git.Repo(cache_path)
+                commit_hash = str(repo.head.commit.hexsha)
+            except (git.InvalidGitRepositoryError, git.NoSuchPathError):
+                # Not a git repo (local folder), use modification time as cache key
+                import os
+                import hashlib
+                # Create a simple hash of directory structure and modification times
+                dir_hash = hashlib.md5()
+                for root, dirs, files in os.walk(cache_path):
+                    for f in sorted(files):
+                        file_path = os.path.join(root, f)
+                        try:
+                            stat = os.stat(file_path)
+                            dir_hash.update(f"{f}:{stat.st_mtime}:{stat.st_size}".encode())
+                        except:
+                            pass
+                commit_hash = dir_hash.hexdigest()[:12]
+            
+            # Run the full analysis (no limit, no specific files/directories)
+            # We need to provide the original repo path that would match the metadata
+            # The analyze_repo_critical_files expects the original path
+            # Get the original URL from metadata
+            original_path = None
+            from filelock import FileLock
+            with self.repo_manager.cache._file_lock():
+                metadata = self.repo_manager.cache._read_metadata()
+                if cache_path in metadata:
+                    original_path = metadata[cache_path].url
+            
+            if not original_path:
+                # Fall back to using cache path directly
+                original_path = cache_path
+                
+            analysis_result = await self.analyze_repo_critical_files(
+                repo_path=original_path,  # Use original path for proper lookup
+                files=None,
+                directories=None,
+                limit=0,  # No limit - get all files
+                include_metrics=True,
+            )
+            
+            if analysis_result.get("status") == "success":
+                # Cache the successful results
+                cache_data = {
+                    "status": "complete",
+                    "analyzed_at": datetime.now().isoformat(),
+                    "commit_hash": commit_hash,
+                    "parameters": {
+                        "files": None,
+                        "directories": None,
+                    },
+                    "results": {
+                        "files": analysis_result.get("files", []),
+                        "total_files_analyzed": analysis_result.get("total_files_analyzed", 0),
+                        "files_with_analysis": analysis_result.get("files_with_analysis", 0),
+                        "files_without_analysis": analysis_result.get("files_without_analysis", 0),
+                    }
+                }
+                
+                await self.repo_manager.cache.update_critical_files_analysis(
+                    cache_path,
+                    cache_data
+                )
+                
+                logger.info(f"Successfully cached critical files analysis for {cache_path}")
+                logger.info(f"Analyzed {len(analysis_result.get('files', []))} critical files")
+            else:
+                # Mark as failed
+                await self.repo_manager.cache.update_critical_files_analysis(
+                    cache_path,
+                    {
+                        "status": "failed",
+                        "completed_at": datetime.now().isoformat(),
+                        "error": analysis_result.get("error", "Unknown error during analysis"),
+                    }
+                )
+                logger.error(f"Failed to analyze critical files: {analysis_result.get('error')}")
+                
+        except Exception as e:
+            logger.error(f"Error during background critical files analysis: {str(e)}", exc_info=True)
+            # Update status to failed
+            await self.repo_manager.cache.update_critical_files_analysis(
+                cache_path,
+                {
+                    "status": "failed",
+                    "completed_at": datetime.now().isoformat(),
+                    "error": str(e),
+                }
+            )

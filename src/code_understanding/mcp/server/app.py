@@ -235,6 +235,56 @@ REQUIRED PARAMETER GUIDANCE:
             return {"status": "error", "error": str(e)}
 
     @mcp_server.tool(
+        name="list_repos",
+        description="List all repositories currently in the MCP server's cache with their complete metadata including clone status, analysis status, branches, and cache sizes.",
+    )
+    async def list_repos() -> dict:
+        """
+        List all cached repositories with their metadata.
+        
+        Returns all available information from the cache metadata including:
+        - Repository URLs and cache paths
+        - Clone and analysis statuses
+        - Branch information
+        - Last access times
+        - Cache sizes
+        - Cache strategies used
+        
+        Returns:
+            dict: Response with format:
+                {
+                    "status": "success" | "error",
+                    "total_cached": int,  # Number of cached repositories
+                    "max_cached_repos": int,  # Maximum allowed cached repos
+                    "cache_dir": str,  # Cache directory path
+                    "repositories": [  # List of cached repositories
+                        {
+                            "cache_path": str,  # File system path to cached repo
+                            "url": str,  # Original repository URL or path
+                            "last_access": str,  # ISO timestamp of last access
+                            "branch": str,  # Branch that was requested
+                            "current_branch": str,  # Currently checked out branch
+                            "cache_strategy": str,  # "shared" or "per-branch"
+                            "clone_status": dict,  # Clone operation status
+                            "repo_map_status": dict,  # Repository analysis status
+                            "cache_size_mb": float,  # Size in megabytes
+                            "cache_size_bytes": int  # Size in bytes
+                        }
+                    ]
+                }
+        
+        Note:
+            - Repositories are sorted by last access time (most recent first)
+            - Useful for cache management and understanding what's available
+            - Shows both completed and in-progress operations
+        """
+        try:
+            return await repo_manager.list_cached_repositories()
+        except Exception as e:
+            logger.error(f"Error listing cached repositories: {e}", exc_info=True)
+            return {"status": "error", "error": str(e)}
+
+    @mcp_server.tool(
         name="clone_repo",
         description="Clone a repository into the MCP server's analysis cache and initiate background analysis. Required before using other analysis endpoints like get_source_repo_map.",
     )

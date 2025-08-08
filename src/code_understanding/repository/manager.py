@@ -724,6 +724,78 @@ class RepositoryManager:
             )
             raise
 
+    async def list_cached_repositories(self) -> Dict[str, Any]:
+        """List all cached repositories with their metadata.
+        
+        Returns:
+            Dictionary containing list of all cached repositories with full metadata
+        """
+        try:
+            cached_repos = []
+            
+            with self.cache._file_lock():
+                metadata = self.cache._read_metadata()
+                
+                for cache_path, repo_metadata in metadata.items():
+                    # Include all metadata fields from RepositoryMetadata
+                    repo_info = {
+                        "cache_path": cache_path,
+                        "url": repo_metadata.url,
+                        "last_access": repo_metadata.last_access,
+                        "branch": repo_metadata.branch,
+                        "cache_strategy": repo_metadata.cache_strategy,
+                        "clone_status": repo_metadata.clone_status,
+                        "repo_map_status": repo_metadata.repo_map_status,
+                    }
+                    
+                    # Add current Git branch if it's a Git repository
+                    try:
+                        repo_path = Path(cache_path)
+                        if repo_path.exists() and (repo_path / ".git").exists():
+                            repo = Repo(cache_path)
+                            if repo.head.is_detached:
+                                repo_info["current_branch"] = f"detached at {repo.head.commit.hexsha[:8]}"
+                            else:
+                                repo_info["current_branch"] = repo.active_branch.name
+                        else:
+                            repo_info["current_branch"] = None
+                    except Exception:
+                        repo_info["current_branch"] = "unknown"
+                    
+                    # Calculate cache size
+                    try:
+                        repo_path = Path(cache_path)
+                        if repo_path.exists():
+                            size = sum(f.stat().st_size for f in repo_path.rglob('*') if f.is_file())
+                            repo_info["cache_size_bytes"] = size
+                            repo_info["cache_size_mb"] = round(size / (1024 * 1024), 2)
+                        else:
+                            repo_info["cache_size_bytes"] = 0
+                            repo_info["cache_size_mb"] = 0
+                    except Exception:
+                        repo_info["cache_size_bytes"] = None
+                        repo_info["cache_size_mb"] = None
+                    
+                    cached_repos.append(repo_info)
+            
+            # Sort by last access time (most recent first)
+            cached_repos.sort(key=lambda x: x.get("last_access", ""), reverse=True)
+            
+            return {
+                "status": "success",
+                "total_cached": len(cached_repos),
+                "max_cached_repos": self.cache.max_cached_repos,
+                "cache_dir": str(self.cache_dir),
+                "repositories": cached_repos
+            }
+            
+        except Exception as e:
+            logger.error(f"Error listing cached repositories: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+
     async def cleanup(self):
         """Cleanup all repositories on server shutdown."""
         for repo_id, repo in list(self.repositories.items()):

@@ -335,6 +335,10 @@ class RepositoryManager:
                         '.pnp',
                         '.pnp.js',
                         
+                        # Angular specific
+                        '.angular',
+                        '*.tsbuildinfo',
+                        
                         # Build outputs
                         'dist',
                         'build',
@@ -343,6 +347,28 @@ class RepositoryManager:
                         'bin',
                         'obj',
                         '*.egg-info',
+                        
+                        # .NET Core / C# specific
+                        'Debug',
+                        'Release',
+                        'x64',
+                        'x86',
+                        'ARM',
+                        'ARM64',
+                        'packages',
+                        'TestResults',
+                        '.vs',
+                        '*.user',
+                        '*.userosscache',
+                        '*.sln.docstates',
+                        '.nuget',
+                        'project.lock.json',
+                        'project.fragment.lock.json',
+                        'artifacts/',
+                        'PublishProfiles',
+                        '*.publishproj',
+                        '*.nupkg',
+                        '*.snupkg',
                         
                         # IDE and editor files
                         '.idea',
@@ -362,13 +388,26 @@ class RepositoryManager:
                         '.bundle',
                         'vendor/bundle',
                         '.sass-cache',
+                        '.parcel-cache',
+                        
+                        # Web development
+                        '.next',
+                        '.nuxt',
+                        '.vuepress',
+                        '.docusaurus',
+                        '.serverless',
+                        '.webpack',
+                        '.turbo',
                         
                         # Other common artifacts
                         '.cache',
+                        'cache',
                         'tmp',
                         'temp',
                         '.tmp',
                         '.temp',
+                        'coverage',
+                        '.nyc_output',
                     }
                     
                     ignored = []

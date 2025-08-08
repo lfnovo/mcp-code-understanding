@@ -507,8 +507,6 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
         directories: Optional[List[str]] = None,
         limit: int = 50,
         include_metrics: bool = True,
-        branch: Optional[str] = None,
-        cache_strategy: str = "shared",
     ) -> dict:
         """
         Analyze and identify the most structurally significant files in a codebase.
@@ -546,14 +544,14 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
             analyzer = CodeComplexityAnalyzer(repo_manager, repo_map_builder)
 
             # Delegate to the specialized CodeComplexityAnalyzer module
+            # Note: The analyzer doesn't use branch/cache_strategy parameters
+            # They're only used for cache path resolution which happens internally
             return await analyzer.analyze_repo_critical_files(
                 repo_path=repo_path,
                 files=files,
                 directories=directories,
                 limit=limit,
                 include_metrics=include_metrics,
-                branch=branch,
-                cache_strategy=cache_strategy,
             )
         except Exception as e:
             logger.error(
@@ -574,7 +572,7 @@ REQUIRED PARAMETER GUIDANCE:
   - If you cloned using a local directory path, you MUST use that identical local path here
   - Mismatched formats will result in 'Repository not found in cache' errors""",
     )
-    async def get_repo_documentation(repo_path: str, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
+    async def get_repo_documentation(repo_path: str) -> dict:
         """
         Retrieve and analyze repository documentation files.
 
@@ -618,7 +616,8 @@ REQUIRED PARAMETER GUIDANCE:
         """
         try:
             # Call documentation backend module (thin endpoint)
-            return await get_repository_documentation(repo_path, branch=branch, cache_strategy=cache_strategy)
+            # Note: The documentation function doesn't use branch/cache_strategy parameters
+            return await get_repository_documentation(repo_path)
         except Exception as e:
             logger.error(
                 f"Error retrieving repository documentation: {e}", exc_info=True

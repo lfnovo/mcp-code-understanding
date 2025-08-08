@@ -379,6 +379,8 @@ class RepositoryManager:
                     cache_path,
                     dirs_exist_ok=True,
                     ignore=ignore_artifacts,
+                    symlinks=False,  # Copy the files symlinks point to, not the symlinks themselves
+                    ignore_dangling_symlinks=True,  # Skip broken symlinks instead of failing
                 )
             else:
                 # For Git repos, modify URL only for clone operation

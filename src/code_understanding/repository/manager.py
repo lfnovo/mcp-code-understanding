@@ -283,16 +283,102 @@ class RepositoryManager:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
 
             if is_local:
-                # For local directories, use copytree with ignore function to exclude .git
-                def ignore_git(dir, files):
-                    return [".git"] if ".git" in files else []
+                # For local directories, use copytree with ignore function to exclude common artifacts
+                def ignore_artifacts(dir_path, files):
+                    """Ignore common build artifacts, dependencies, and temporary files."""
+                    ignore_patterns = {
+                        # Version control
+                        '.git',
+                        '.svn',
+                        '.hg',
+                        
+                        # Python
+                        '__pycache__',
+                        '.pytest_cache',
+                        '.tox',
+                        '.venv',
+                        'venv',
+                        '.env',
+                        'env',
+                        '.virtualenv',
+                        'virtualenv',
+                        '.pyenv',
+                        '*.pyc',
+                        '*.pyo',
+                        '*.pyd',
+                        '.Python',
+                        'pip-log.txt',
+                        'pip-delete-this-directory.txt',
+                        '.mypy_cache',
+                        '.ruff_cache',
+                        '.coverage',
+                        'htmlcov',
+                        '.hypothesis',
+                        
+                        # JavaScript/Node
+                        'node_modules',
+                        'bower_components',
+                        '.npm',
+                        '.yarn',
+                        '.pnp',
+                        '.pnp.js',
+                        
+                        # Build outputs
+                        'dist',
+                        'build',
+                        'out',
+                        'target',
+                        'bin',
+                        'obj',
+                        '*.egg-info',
+                        
+                        # IDE and editor files
+                        '.idea',
+                        '.vscode',
+                        '*.swp',
+                        '*.swo',
+                        '*~',
+                        '.DS_Store',
+                        'Thumbs.db',
+                        
+                        # Logs and databases
+                        '*.log',
+                        '*.sqlite',
+                        '*.db',
+                        
+                        # Package manager locks and caches
+                        '.bundle',
+                        'vendor/bundle',
+                        '.sass-cache',
+                        
+                        # Other common artifacts
+                        '.cache',
+                        'tmp',
+                        'temp',
+                        '.tmp',
+                        '.temp',
+                    }
+                    
+                    ignored = []
+                    for file in files:
+                        # Check if file/folder matches any ignore pattern
+                        if file in ignore_patterns:
+                            ignored.append(file)
+                        # Also check for pattern matching (e.g., *.pyc)
+                        elif any(file.endswith(pattern.replace('*', '')) for pattern in ignore_patterns if '*' in pattern):
+                            ignored.append(file)
+                    
+                    if ignored:
+                        logger.debug(f"Ignoring in {os.path.basename(dir_path)}: {', '.join(ignored)}")
+                    
+                    return ignored
 
                 await asyncio.to_thread(
                     shutil.copytree,
                     url,
                     cache_path,
                     dirs_exist_ok=True,
-                    ignore=ignore_git,
+                    ignore=ignore_artifacts,
                 )
             else:
                 # For Git repos, modify URL only for clone operation

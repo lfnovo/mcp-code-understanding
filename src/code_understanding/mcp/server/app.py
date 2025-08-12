@@ -51,12 +51,10 @@ def register_tools(
         name="get_repo_file_content",
         description="""Retrieve file contents or directory listings from a repository. For files, returns the complete file content. For directories, returns a non-recursive listing of immediate files and subdirectories.
 
-PARAMETER GUIDANCE:
-- repo_path: (Required) MUST match the exact format of the original input to clone_repo
-  - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
-  - If you cloned using a local directory path, you MUST use that identical local path here
-  - Mismatched formats will result in 'Repository not found in cache' errors
-- resource_path: (Optional) Path to the target file or directory within the repository. If not provided, it defaults to the repository's root directory.""",
+PARAMETERS:
+- repo_path: Repository identifier (GitHub URL or local path)
+  Examples: 'https://github.com/user/repo', '/home/user/project'
+- resource_path: (Optional) Path within the repository. Defaults to root directory if not provided.""",
     )
     async def get_repo_file_content(repo_path: str, resource_path: Optional[str] = None, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
         """
@@ -138,13 +136,21 @@ PARAMETER GUIDANCE:
 
     @mcp_server.tool(
         name="refresh_repo",
-        description="""Update a previously cloned repository in MCP's cache with latest changes and trigger reanalysis. Use this to ensure analysis is based on latest code.
+        description="""⚠️ MANUAL SYNC ONLY: Update a repository with latest changes. Only use when explicitly requested by the user.
 
-REQUIRED PARAMETER GUIDANCE:
-- repo_path: MUST match the exact format of the original input to clone_repo
-  - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
-  - If you cloned using a local directory path, you MUST use that identical local path here
-  - Mismatched formats will result in 'Repository not found in cache' errors""",
+IMPORTANT:
+- DO NOT use this automatically or proactively
+- ONLY use when user explicitly asks to "refresh", "sync", or "update" the repository
+- The initial clone already provides the latest code - no refresh needed after cloning
+
+WHAT IT DOES:
+- Git repos: Performs git pull to fetch latest commits
+- Local dirs: Re-copies from source directory  
+- Triggers re-analysis of changed files
+
+PARAMETER:
+- repo_path: Repository identifier (GitHub URL or local path)
+  Examples: 'https://github.com/user/repo', '/home/user/project'""",
     )
     async def refresh_repo(repo_path: str, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
         """
@@ -186,6 +192,80 @@ REQUIRED PARAMETER GUIDANCE:
             return await repo_manager.refresh_repository(repo_path, branch, cache_strategy)
         except Exception as e:
             logger.error(f"Error refreshing repository: {e}", exc_info=True)
+            return {"status": "error", "error": str(e)}
+
+    @mcp_server.tool(
+        name="get_repo_status",
+        description="""Check if a repository is cloned and ready for analysis without triggering any operations.
+
+USE THIS TO:
+- Check if a repository needs to be cloned
+- Verify if analysis is complete or in progress
+- See which branch is currently active
+- Understand the cache state before using other tools
+
+RETURNS:
+- is_cloned: Whether the repository exists in cache
+- clone_status: Current state ('complete', 'cloning', 'failed', or None)
+- analysis_status: State of code analysis ('complete', 'building', or None)
+- current_branch: The active branch name
+- cache_strategy: Which strategy is being used
+- last_updated: When the repository was last accessed""",
+    )
+    async def get_repo_status(repo_path: str, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
+        """
+        Check repository status without side effects.
+        
+        Args:
+            repo_path: Repository identifier (GitHub URL or local path)
+            branch: Optional branch to check (for per-branch strategy)
+            cache_strategy: Cache strategy to check ('shared' or 'per-branch')
+            
+        Returns:
+            dict: Complete status information about the repository
+        """
+        try:
+            from code_understanding.repository.path_utils import get_cache_path
+            
+            # Get cache path based on strategy
+            cache_path = get_cache_path(
+                repo_manager.cache_dir,
+                repo_path,
+                branch if cache_strategy == "per-branch" else None,
+                per_branch=(cache_strategy == "per-branch")
+            )
+            str_path = str(cache_path.resolve())
+            
+            # Get repository status from cache
+            repo_status = await repo_manager.cache.get_repository_status(str_path)
+            
+            if not repo_status:
+                return {
+                    "status": "success",
+                    "is_cloned": False,
+                    "clone_status": None,
+                    "analysis_status": None,
+                    "message": "Repository not found in cache"
+                }
+            
+            # Extract relevant status information
+            clone_status = repo_status.get("clone_status", {})
+            repo_map_status = repo_status.get("repo_map_status", {})
+            
+            return {
+                "status": "success",
+                "is_cloned": clone_status.get("status") == "complete",
+                "clone_status": clone_status.get("status"),
+                "analysis_status": repo_map_status.get("status") if repo_map_status else None,
+                "current_branch": repo_status.get("current_branch"),
+                "requested_branch": repo_status.get("requested_branch"),
+                "cache_strategy": repo_status.get("cache_strategy", cache_strategy),
+                "last_updated": repo_status.get("last_access"),
+                "cache_path": str_path
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting repository status: {e}", exc_info=True)
             return {"status": "error", "error": str(e)}
 
     @mcp_server.tool(
@@ -286,7 +366,22 @@ REQUIRED PARAMETER GUIDANCE:
 
     @mcp_server.tool(
         name="clone_repo",
-        description="Clone a repository into the MCP server's analysis cache and initiate background analysis. Required before using other analysis endpoints like get_source_repo_map.",
+        description="""Initialize a repository for analysis by copying it to MCP's cache. This is a prerequisite for all other analysis tools.
+
+WHEN TO USE:
+- First time analyzing a repository
+- When explicitly switching cache strategies
+- NOT needed if already cloned (check with list_repos first if unsure)
+
+RETURNS:
+- 'already_cloned': Repository ready for analysis, no action needed
+- 'pending': Clone started, will complete in background. You can proceed with other tools
+- 'switched_branch': Branch changed successfully (shared cache only)
+- 'error': Operation failed, see error message
+
+CACHE STRATEGIES:
+- 'shared' (default): One cache per repo, can switch branches in-place
+- 'per-branch': Separate cache for each branch, useful for comparing branches""",
     )
     async def clone_repo(url: str, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
         """
@@ -343,11 +438,10 @@ REQUIRED PARAMETER GUIDANCE:
         name="get_source_repo_map",
         description="""Retrieve a semantic analysis map of the repository's source code structure, including file hierarchy, functions, classes, and their relationships. Repository must be previously cloned via clone_repo.
 
-REQUIRED PARAMETER GUIDANCE:
-- repo_path: MUST match the exact format of the original input to clone_repo
-  - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
-  - If you cloned using a local directory path, you MUST use that identical local path here
-  - Mismatched formats will result in 'Repository not found in cache' errors
+PARAMETER:
+- repo_path: Repository identifier (GitHub URL or local path)
+  Examples: 'https://github.com/user/repo', '/home/user/project'
+  The format will be normalized automatically
 
 RESPONSE CHARACTERISTICS:
 1. Status Types:
@@ -450,11 +544,10 @@ NOTE: This tool supports both broad and focused analysis strategies. Response ha
         name="get_repo_structure",
         description="""Retrieve directory structure and analyzable file counts for a repository to guide analysis decisions.
 
-REQUIRED PARAMETER GUIDANCE:
-- repo_path: MUST match the exact format of the original input to clone_repo
-  - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
-  - If you cloned using a local directory path, you MUST use that identical local path here
-  - Mismatched formats will result in 'Repository not found in cache' errors
+PARAMETER:
+- repo_path: Repository identifier (GitHub URL or local path)
+  Examples: 'https://github.com/user/repo', '/home/user/project'
+  The format will be normalized automatically
 
 RESPONSE CHARACTERISTICS:
 1. Directory Information:
@@ -517,11 +610,10 @@ NOTE: Use this tool to understand repository structure and choose which director
         name="get_repo_critical_files",
         description="""Identify and analyze the most structurally significant files in a repository to guide code understanding efforts.
 
-REQUIRED PARAMETER GUIDANCE:
-- repo_path: MUST match the exact format of the original input to clone_repo
-  - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
-  - If you cloned using a local directory path, you MUST use that identical local path here
-  - Mismatched formats will result in 'Repository not found in cache' errors
+PARAMETER:
+- repo_path: Repository identifier (GitHub URL or local path)
+  Examples: 'https://github.com/user/repo', '/home/user/project'
+  The format will be normalized automatically
 
 RESPONSE CHARACTERISTICS:
 1. Analysis Metrics:
@@ -703,11 +795,9 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
         name="get_repo_documentation",
         description="""Retrieve and analyze documentation files from a repository, including README files, API docs, design documents, and other documentation. Repository must be previously cloned via clone_repo.
 
-REQUIRED PARAMETER GUIDANCE:
-- repo_path: MUST match the exact format of the original input to clone_repo
-  - If you cloned using a GitHub URL (e.g., 'https://github.com/username/repo'), you MUST use that identical URL here
-  - If you cloned using a local directory path, you MUST use that identical local path here
-  - Mismatched formats will result in 'Repository not found in cache' errors""",
+PARAMETER:
+- repo_path: Repository identifier (GitHub URL or local path)
+  Examples: 'https://github.com/user/repo', '/home/user/project'""",
     )
     async def get_repo_documentation(repo_path: str) -> dict:
         """

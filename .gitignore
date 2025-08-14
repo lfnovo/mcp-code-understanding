@@ -60,3 +60,6 @@ dmypy.json
 .ipynb_checkpoints
 .aider*
 
+
+
+claude-logs

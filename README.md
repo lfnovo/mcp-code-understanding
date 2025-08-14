@@ -6,7 +6,7 @@
 
 # Code Understanding MCP Server
 
-An MCP (Model Context Protocol) server designed to understand codebases and provide intelligent context to AI coding assistants. This server handles both local and remote GitHub repositories and supports standard MCP-compliant operations.
+An MCP (Model Context Protocol) server designed to understand codebases and provide intelligent context to AI coding assistants. This server handles local directories, GitHub repositories, and Azure DevOps repositories, supporting standard MCP-compliant operations.
 
 ## 🤖 AI Assistant Installation
 
@@ -14,7 +14,7 @@ An MCP (Model Context Protocol) server designed to understand codebases and prov
 
 ## Features
 
-- Clone and analyze GitHub repositories or local codebases
+- Clone and analyze GitHub repositories, Azure DevOps repositories, or local codebases
 - Get repository structure and file organization
 - Identify critical files based on complexity metrics and code structure
 - Generate detailed repository maps showing:
@@ -183,9 +183,10 @@ The server employs several strategies to maintain performance and usability even
 
 These design choices ensure that developers can start working immediately with large codebases while the system builds a progressively deeper understanding in the background, striking an optimal balance between analysis depth and responsiveness.
 
-### GitHub Authentication (Optional)
+### Git Repository Authentication (Optional)
 
-If you need to access private repositories or want to avoid GitHub API rate limits, add your GitHub token to the configuration:
+#### GitHub
+If you need to access private GitHub repositories or want to avoid API rate limits, add your GitHub token to the configuration:
 
 ```json
 {
@@ -195,6 +196,41 @@ If you need to access private repositories or want to avoid GitHub API rate limi
       "args": [],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "your-github-token-here"
+      }
+    }
+  }
+}
+```
+
+#### Azure DevOps
+For private Azure DevOps repositories, add your Personal Access Token (PAT) to the configuration:
+
+```json
+{
+  "mcpServers": {
+    "code-understanding": {
+      "command": "/path/to/code-understanding-mcp-server",
+      "args": [],
+      "env": {
+        "AZURE_DEVOPS_PAT": "your-azure-devops-pat-here"
+      }
+    }
+  }
+}
+```
+
+#### Using Both GitHub and Azure DevOps
+You can configure both tokens if you work with repositories from both platforms:
+
+```json
+{
+  "mcpServers": {
+    "code-understanding": {
+      "command": "/path/to/code-understanding-mcp-server",
+      "args": [],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-github-token-here",
+        "AZURE_DEVOPS_PAT": "your-azure-devops-pat-here"
       }
     }
   }
@@ -217,7 +253,8 @@ For advanced users, the server supports several configuration options:
         "--port", "3001"                         // Port for SSE transport (only used with sse)
       ],
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-github-token-here"
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-github-token-here",
+        "AZURE_DEVOPS_PAT": "your-azure-devops-pat-here"
       }
     }
   }
@@ -229,6 +266,23 @@ Available options:
 - `--max-cached-repos`: Set maximum number of cached repositories (default: 10)
 - `--transport`: Choose transport type (stdio or sse, default: stdio)
 - `--port`: Set port for SSE transport (default: 3001, only used with sse transport)
+
+## Supported Repository Formats
+
+The server supports the following repository URL formats:
+
+### GitHub
+- HTTPS: `https://github.com/owner/repo`
+- SSH: `git@github.com:owner/repo.git`
+
+### Azure DevOps
+- HTTPS: `https://dev.azure.com/organization/project/_git/repository`
+- HTTPS with org: `https://organization@dev.azure.com/organization/project/_git/repository`
+- SSH: `git@ssh.dev.azure.com:v3/organization/project/repository`
+
+### Local Directories
+- Absolute paths: `/home/user/projects/my-repo`
+- Relative paths: `./my-repo` or `../other-repo`
 
 ### Platform-Specific Notes
 
@@ -386,11 +440,17 @@ pre-commit install
 uv run pytest
 
 # 7. Test the server using MCP inspector
-# Without GitHub authentication:
+# Without authentication:
 uv run mcp dev src/code_understanding/mcp/server/app.py
 
 # With GitHub authentication (for testing private repos):
 GITHUB_PERSONAL_ACCESS_TOKEN=your_token_here uv run mcp dev src/code_understanding/mcp/server/app.py
+
+# With Azure DevOps authentication:
+AZURE_DEVOPS_PAT=your_token_here uv run mcp dev src/code_understanding/mcp/server/app.py
+
+# With both GitHub and Azure DevOps authentication:
+GITHUB_PERSONAL_ACCESS_TOKEN=github_token AZURE_DEVOPS_PAT=azure_token uv run mcp dev src/code_understanding/mcp/server/app.py
 ```
 
 This will launch an interactive console where you can test all MCP server endpoints directly.

@@ -31,6 +31,7 @@ class RepositoryMetadata:
     critical_files_analysis: Optional[Dict[str, Any]] = None  # Cache for critical files analysis
 
     def __post_init__(self):
+        # Only set default if clone_status is explicitly None (not just empty dict)
         if self.clone_status is None:
             self.clone_status = {
                 "status": "not_started",
@@ -203,9 +204,9 @@ class RepositoryCache:
     async def add_repo(self, path: str, url: Optional[str] = None, branch: Optional[str] = None, cache_strategy: Optional[str] = None):
         """Register a new repository after successful clone"""
         with self._file_lock():
-            metadata = self._sync_metadata()
+            metadata = self._read_metadata()  # Use _read_metadata to preserve existing data
             if path in metadata:
-                # Update existing metadata
+                # Update existing metadata, preserving clone_status and other fields
                 metadata[path].url = url
                 metadata[path].branch = branch
                 metadata[path].cache_strategy = cache_strategy
@@ -273,14 +274,18 @@ class RepositoryCache:
 
     async def update_clone_status(self, path: str, status: Dict[str, Any]):
         """Update clone status while preserving repo map status"""
+        logger.debug(f"update_clone_status called for path: {path}, status: {status}")
         with self._file_lock():
             metadata = self._read_metadata()
             if path not in metadata:
+                logger.debug(f"Creating new metadata entry for path: {path}")
                 metadata[path] = RepositoryMetadata(
                     path=path, url=None, last_access=datetime.now().isoformat()
                 )
+            logger.debug(f"Setting clone_status to: {status}")
             metadata[path].clone_status = status
             self._write_metadata(metadata)
+            logger.debug(f"Metadata written successfully for path: {path}")
 
     async def update_repo_map_status(self, path: str, status: Dict[str, Any]):
         """Update repo map status while preserving clone status"""

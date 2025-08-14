@@ -52,8 +52,8 @@ def register_tools(
         description="""Retrieve file contents or directory listings from a repository. For files, returns the complete file content. For directories, returns a non-recursive listing of immediate files and subdirectories.
 
 PARAMETERS:
-- repo_path: Repository identifier (GitHub URL or local path)
-  Examples: 'https://github.com/user/repo', '/home/user/project'
+- repo_path: Repository identifier (GitHub URL, Azure DevOps URL, or local path)
+  Examples: 'https://github.com/user/repo', 'https://dev.azure.com/org/project/_git/repo', '/home/user/project'
 - resource_path: (Optional) Path within the repository. Defaults to root directory if not provided.""",
     )
     async def get_repo_file_content(repo_path: str, resource_path: Optional[str] = None, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
@@ -149,8 +149,8 @@ WHAT IT DOES:
 - Triggers re-analysis of changed files
 
 PARAMETER:
-- repo_path: Repository identifier (GitHub URL or local path)
-  Examples: 'https://github.com/user/repo', '/home/user/project'""",
+- repo_path: Repository identifier (GitHub URL, Azure DevOps URL, or local path)
+  Examples: 'https://github.com/user/repo', 'https://dev.azure.com/org/project/_git/repo', '/home/user/project'""",
     )
     async def refresh_repo(repo_path: str, branch: Optional[str] = None, cache_strategy: str = "shared") -> dict:
         """
@@ -217,7 +217,7 @@ RETURNS:
         Check repository status without side effects.
         
         Args:
-            repo_path: Repository identifier (GitHub URL or local path)
+            repo_path: Repository identifier (GitHub URL, Azure DevOps URL, or local path)
             branch: Optional branch to check (for per-branch strategy)
             cache_strategy: Cache strategy to check ('shared' or 'per-branch')
             
@@ -439,8 +439,8 @@ CACHE STRATEGIES:
         description="""Retrieve a semantic analysis map of the repository's source code structure, including file hierarchy, functions, classes, and their relationships. Repository must be previously cloned via clone_repo.
 
 PARAMETER:
-- repo_path: Repository identifier (GitHub URL or local path)
-  Examples: 'https://github.com/user/repo', '/home/user/project'
+- repo_path: Repository identifier (GitHub URL, Azure DevOps URL, or local path)
+  Examples: 'https://github.com/user/repo', 'https://dev.azure.com/org/project/_git/repo', '/home/user/project'
   The format will be normalized automatically
 
 RESPONSE CHARACTERISTICS:
@@ -545,8 +545,8 @@ NOTE: This tool supports both broad and focused analysis strategies. Response ha
         description="""Retrieve directory structure and analyzable file counts for a repository to guide analysis decisions.
 
 PARAMETER:
-- repo_path: Repository identifier (GitHub URL or local path)
-  Examples: 'https://github.com/user/repo', '/home/user/project'
+- repo_path: Repository identifier (GitHub URL, Azure DevOps URL, or local path)
+  Examples: 'https://github.com/user/repo', 'https://dev.azure.com/org/project/_git/repo', '/home/user/project'
   The format will be normalized automatically
 
 RESPONSE CHARACTERISTICS:
@@ -611,8 +611,8 @@ NOTE: Use this tool to understand repository structure and choose which director
         description="""Identify and analyze the most structurally significant files in a repository to guide code understanding efforts.
 
 PARAMETER:
-- repo_path: Repository identifier (GitHub URL or local path)
-  Examples: 'https://github.com/user/repo', '/home/user/project'
+- repo_path: Repository identifier (GitHub URL, Azure DevOps URL, or local path)
+  Examples: 'https://github.com/user/repo', 'https://dev.azure.com/org/project/_git/repo', '/home/user/project'
   The format will be normalized automatically
 
 RESPONSE CHARACTERISTICS:
@@ -796,8 +796,8 @@ NOTE: This tool is designed to guide initial codebase exploration by identifying
         description="""Retrieve and analyze documentation files from a repository, including README files, API docs, design documents, and other documentation. Repository must be previously cloned via clone_repo.
 
 PARAMETER:
-- repo_path: Repository identifier (GitHub URL or local path)
-  Examples: 'https://github.com/user/repo', '/home/user/project'""",
+- repo_path: Repository identifier (GitHub URL, Azure DevOps URL, or local path)
+  Examples: 'https://github.com/user/repo', 'https://dev.azure.com/org/project/_git/repo', '/home/user/project'""",
     )
     async def get_repo_documentation(repo_path: str) -> dict:
         """

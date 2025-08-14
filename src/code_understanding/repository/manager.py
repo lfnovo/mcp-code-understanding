@@ -19,6 +19,7 @@ from git.repo import Repo
 from ..config import RepositoryConfig
 from .cache import RepositoryCache, RepositoryMetadata
 from .path_utils import get_cache_path, is_git_url
+from .providers.registry import get_default_registry
 
 logger = logging.getLogger(__name__)
 
@@ -437,15 +438,28 @@ class RepositoryManager:
                 # For Git repos, modify URL only for clone operation
                 clone_url = url  # Default to original
                 if not is_local:
-                    token = os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN")
-                    if token:
-                        parsed = urlparse(url)
-                        if parsed.hostname == "github.com":
-                            # Use token URL only for clone
-                            clone_url = f"https://{token}@github.com{parsed.path}"
-                            logger.debug(
-                                f"Using authenticated URL for clone: https://***@github.com{parsed.path}"
-                            )
+                    # Use provider-based authentication
+                    try:
+                        provider_registry = get_default_registry()
+                        provider = provider_registry.get_provider(url)
+                        if provider:
+                            token = os.environ.get(provider.get_env_var_name())
+                            # Always use get_authenticated_url to normalize URLs
+                            # (e.g., convert Azure DevOps short format to full format)
+                            clone_url = provider.get_authenticated_url(url, token)
+                            if token:
+                                logger.debug(
+                                    f"Using authenticated URL for clone with {provider.get_provider_name()}: {url} (token hidden)"
+                                )
+                            else:
+                                logger.debug(
+                                    f"No token found for {provider.get_provider_name()} in {provider.get_env_var_name()}"
+                                )
+                        else:
+                            logger.debug(f"No provider found for URL: {url}")
+                    except Exception as e:
+                        logger.warning(f"Failed to get provider authentication for {url}: {e}")
+                        # Fall back to original URL
 
                 # Use clone_url for git operation only
                 await asyncio.to_thread(
@@ -465,10 +479,12 @@ class RepositoryManager:
                         logger.warning(f"Could not verify/checkout branch {branch}: {e}")
 
             # Update success status
+            logger.info(f"Updating clone status to complete for: {str_path}")
             await self.cache.update_clone_status(
                 str_path,
                 {"status": "complete", "completed_at": datetime.now().isoformat()},
             )
+            logger.info(f"Clone status updated successfully for: {str_path}")
 
             # Register the repo with original URL and branch information
             await self.cache.add_repo(str_path, original_url, branch, cache_strategy)

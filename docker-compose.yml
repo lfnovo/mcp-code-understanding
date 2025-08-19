@@ -1,7 +1,7 @@
 services:
-  code-understanding-mcp:
+  code-expert-mcp:
     build: .
-    container_name: code-understanding-mcp
+    container_name: code-expert-mcp
     # image: lfnovo/code-understanding
     ports:
       - "3001:3001"

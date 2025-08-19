@@ -85,7 +85,7 @@ def setup_logging(server_config: Optional[ServerConfig] = None) -> None:
     # Set up file logging
     log_path = get_default_log_dir()
     log_path.mkdir(parents=True, exist_ok=True)
-    log_file = log_path / "mcp-code-understanding.log"
+    log_file = log_path / "code-expert-mcp.log"
 
     # Add rotating file handler (10MB files, keep 5 backups)
     file_handler = logging.handlers.RotatingFileHandler(

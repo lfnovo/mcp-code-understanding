@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel", "build"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "code-understanding-mcp-server"
+name = "code-expert-mcp"
 version = "0.1.8"
 description = "MCP server for code understanding and context generation"
 readme = "README.md"
@@ -58,8 +58,8 @@ dev = [
 
 [project.scripts]
 # Align script name with the package name for simplicity with uvx
-code-understanding-mcp-server = "code_understanding.mcp.server.app:main"
-code-understanding-mcp-server-simple = "code_understanding.mcp.server.simple_http_app:main"
+code-expert-mcp = "code_understanding.mcp.server.app:main"
+code-expert-mcp-simple = "code_understanding.mcp.server.simple_http_app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -25,7 +25,7 @@ After implementing fixes for the comprehensive PR review, a new critical issue w
 
 **Evidence**: Test logs show correct sanitized paths:
 ```
-mcp-code-understanding-cursor-fix-clone-endpoint-to-use-specified-branch-5015-afe5220f
+code-expert-mcp-cursor-fix-clone-endpoint-to-use-specified-branch-5015-afe5220f
 ```
 
 ### 2. Cache Strategy Metadata ✅

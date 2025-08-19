@@ -31,7 +31,7 @@ ipow https://astral.sh/uv/install.ps1 | iex
 Use the isolated tool installation method:
 
 ```bash
-uv tool install code-understanding-mcp-server
+uv tool install code-expert-mcp
 ```
 
 ### Step 3: Verify Installation
@@ -39,10 +39,10 @@ uv tool install code-understanding-mcp-server
 Find the installed binary location:
 
 ```bash
-which code-understanding-mcp-server
+which code-expert-mcp
 ```
 
-Expected output example: `/Users/username/.local/bin/code-understanding-mcp-server`
+Expected output example: `/Users/username/.local/bin/code-expert-mcp`
 
 ### Step 4: Configure MCP Client
 
@@ -52,7 +52,7 @@ Help the user configure their MCP client with the verified binary path:
 {
   "mcpServers": {
     "code-understanding": {
-      "command": "/path/to/code-understanding-mcp-server",
+      "command": "/path/to/code-expert-mcp",
       "args": [],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "your-github-token-here"
@@ -107,7 +107,7 @@ Once configured, the following tools will be available:
 
 The server supports these command-line options:
 
-- `--cache-dir`: Custom cache directory (default: `~/.cache/mcp-code-understanding`)
+- `--cache-dir`: Custom cache directory (default: `~/.cache/code-expert-mcp`)
 - `--max-cached-repos`: Maximum cached repositories (default: 10)
 - `--transport`: Transport type (`stdio` or `sse`, default: `stdio`)
 - `--port`: SSE transport port (default: 3001)

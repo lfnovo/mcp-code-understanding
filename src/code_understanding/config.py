@@ -68,7 +68,7 @@ class RepositoryConfig:
     max_cached_repos: int = 50
 
     def get_cache_dir_path(self) -> Path:
-        app_name = "mcp-code-understanding"
+        app_name = "code-expert-mcp"
         if self.cache_dir:
             # User-defined path from config/override
             p = Path(self.cache_dir).expanduser().resolve()
@@ -102,7 +102,7 @@ class ServerConfig:
 def ensure_default_config() -> None:
     """Ensure default config exists in the standard platform-specific directory."""
     logger = logging.getLogger(__name__)
-    app_name = "mcp-code-understanding"
+    app_name = "code-expert-mcp"
 
     # New platform-specific config directory
     new_config_dir = Path(user_config_dir(app_name))
@@ -183,7 +183,7 @@ def ensure_default_config() -> None:
 def get_config_search_paths() -> List[Path]:
     """Get list of paths to search for config file, prioritizing platform-specific."""
     paths: List[Path] = []
-    app_name = "mcp-code-understanding"
+    app_name = "code-expert-mcp"
 
     # 1. Platform-specific configuration directory
     platform_config_path = Path(user_config_dir(app_name)) / "config.yaml"

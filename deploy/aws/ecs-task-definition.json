@@ -1,5 +1,5 @@
 {
-  "family": "code-understanding-mcp",
+  "family": "code-expert-mcp",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "1024",
@@ -20,7 +20,7 @@
   ],
   "containerDefinitions": [
     {
-      "name": "code-understanding-mcp",
+      "name": "code-expert-mcp",
       "image": "YOUR_ECR_REPO_URI:latest",
       "essential": true,
       "portMappings": [
@@ -48,7 +48,7 @@
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/code-understanding-mcp",
+          "awslogs-group": "/ecs/code-expert-mcp",
           "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "ecs"
         }

@@ -51,7 +51,7 @@ For the most reliable isolated installation:
 
 ```bash
 # Install the MCP server as a tool
-uv tool install code-understanding-mcp-server
+uv tool install code-expert-mcp
 ```
 
 #### Method 2: Direct Execution with uvx (Fallback)
@@ -60,7 +60,7 @@ uv tool install code-understanding-mcp-server
 
 ```bash
 # Run directly without installation
-uvx code-understanding-mcp-server
+uvx code-expert-mcp
 ```
 
 ### Verify Installation
@@ -69,8 +69,8 @@ After installation, verify the binary location:
 
 ```bash
 # For Method 1 (tool installation)
-which code-understanding-mcp-server
-# Expected output example: /Users/username/.local/bin/code-understanding-mcp-server
+which code-expert-mcp
+# Expected output example: /Users/username/.local/bin/code-expert-mcp
 
 # For Method 2 (uvx) - no persistent binary
 # The tool runs directly through uvx
@@ -84,14 +84,14 @@ Use the verified binary path in your MCP client configuration:
 {
   "mcpServers": {
     "code-understanding": {
-      "command": "/path/to/code-understanding-mcp-server",
+      "command": "/path/to/code-expert-mcp",
       "args": []
     }
   }
 }
 ```
 
-Replace `/path/to/code-understanding-mcp-server` with the actual path from the verification step above.
+Replace `/path/to/code-expert-mcp` with the actual path from the verification step above.
 
 For uvx method (less reliable):
 
@@ -192,7 +192,7 @@ If you need to access private GitHub repositories or want to avoid API rate limi
 {
   "mcpServers": {
     "code-understanding": {
-      "command": "/path/to/code-understanding-mcp-server",
+      "command": "/path/to/code-expert-mcp",
       "args": [],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "your-github-token-here"
@@ -209,7 +209,7 @@ For private Azure DevOps repositories, add your Personal Access Token (PAT) to t
 {
   "mcpServers": {
     "code-understanding": {
-      "command": "/path/to/code-understanding-mcp-server",
+      "command": "/path/to/code-expert-mcp",
       "args": [],
       "env": {
         "AZURE_DEVOPS_PAT": "your-azure-devops-pat-here"
@@ -226,7 +226,7 @@ You can configure both tokens if you work with repositories from both platforms:
 {
   "mcpServers": {
     "code-understanding": {
-      "command": "/path/to/code-understanding-mcp-server",
+      "command": "/path/to/code-expert-mcp",
       "args": [],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "your-github-token-here",
@@ -245,7 +245,7 @@ For advanced users, the server supports several configuration options:
 {
   "mcpServers": {
     "code-understanding": {
-      "command": "/path/to/code-understanding-mcp-server",
+      "command": "/path/to/code-expert-mcp",
       "args": [
         "--cache-dir", "~/custom-cache-dir",     // Override repository cache location
         "--max-cached-repos", "20",              // Override maximum number of cached repos
@@ -262,7 +262,7 @@ For advanced users, the server supports several configuration options:
 ```
 
 Available options:
-- `--cache-dir`: Override the repository cache directory location (default: ~/.cache/mcp-code-understanding)
+- `--cache-dir`: Override the repository cache directory location (default: ~/.cache/code-expert-mcp)
 - `--max-cached-repos`: Set maximum number of cached repositories (default: 10)
 - `--transport`: Choose transport type (stdio or sse, default: stdio)
 - `--port`: Set port for SSE transport (default: 3001, only used with sse transport)
@@ -275,8 +275,8 @@ The MCP server can be run in a Docker container with Streamable HTTP transport, 
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/mcp-code-understanding.git
-cd mcp-code-understanding
+git clone https://github.com/yourusername/code-expert-mcp.git
+cd code-expert-mcp
 
 # Build the Docker image
 docker build -t mcp-server .
@@ -394,11 +394,11 @@ The server supports the following repository URL formats:
 ### Platform-Specific Notes
 
 #### macOS
-- Binary typically installs to: `~/.local/bin/code-understanding-mcp-server`
+- Binary typically installs to: `~/.local/bin/code-expert-mcp`
 - Ensure `~/.local/bin` is in your PATH
 
 #### Linux
-- Binary typically installs to: `~/.local/bin/code-understanding-mcp-server`
+- Binary typically installs to: `~/.local/bin/code-expert-mcp`
 - May require: `export PATH="$HOME/.local/bin:$PATH"` in your shell profile
 
 #### Windows
@@ -413,17 +413,17 @@ If you encounter dependency conflicts when using `uvx`:
 
 1. Switch to the tool installation method:
    ```bash
-   uv tool install code-understanding-mcp-server
+   uv tool install code-expert-mcp
    ```
 
 2. If conflicts persist, create an isolated environment:
    ```bash
    # Create a dedicated virtual environment
-   uv venv ~/.venvs/mcp-code-understanding
+   uv venv ~/.venvs/code-expert-mcp
    # Activate it (macOS/Linux)
-   source ~/.venvs/mcp-code-understanding/bin/activate
+   source ~/.venvs/code-expert-mcp/bin/activate
    # Install the package
-   uv pip install code-understanding-mcp-server
+   uv pip install code-expert-mcp
    ```
 
 #### Binary Not Found
@@ -433,7 +433,7 @@ If the installed binary is not found:
 1. Check installation location:
    ```bash
    # macOS/Linux
-   find ~/.local -name "code-understanding-mcp-server" 2>/dev/null
+   find ~/.local -name "code-expert-mcp" 2>/dev/null
    ```
 
 2. Add to PATH if needed:
@@ -446,7 +446,7 @@ If the installed binary is not found:
 
 ## Server Configuration
 
-The server uses a `config.yaml` file for base configuration. This file is automatically created in the standard configuration directory (`~/.config/mcp-code-understanding/config.yaml`) when the server first runs. You can also place a `config.yaml` file in your current directory to override the default configuration.
+The server uses a `config.yaml` file for base configuration. This file is automatically created in the standard configuration directory (`~/.config/code-expert-mcp/config.yaml`) when the server first runs. You can also place a `config.yaml` file in your current directory to override the default configuration.
 
 Here's the default configuration structure:
 
@@ -455,7 +455,7 @@ name: "Code Understanding Server"
 log_level: "debug"
 
 repository:
-  cache_dir: "~/.cache/mcp-code-understanding"
+  cache_dir: "~/.cache/code-expert-mcp"
   max_cached_repos: 10
 
 documentation:
@@ -516,8 +516,8 @@ To contribute or run this project locally:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/yourusername/mcp-code-understanding.git
-cd mcp-code-understanding
+git clone https://github.com/yourusername/code-expert-mcp.git
+cd code-expert-mcp
 
 # 2. Create virtual environment
 uv venv

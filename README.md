@@ -267,6 +267,113 @@ Available options:
 - `--transport`: Choose transport type (stdio or sse, default: stdio)
 - `--port`: Set port for SSE transport (default: 3001, only used with sse transport)
 
+## Docker Support with Streamable HTTP
+
+The MCP server can be run in a Docker container with Streamable HTTP transport, enabling integration with Claude and other MCP clients that require HTTP-based communication.
+
+### Building the Docker Image
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/mcp-code-understanding.git
+cd mcp-code-understanding
+
+# Build the Docker image
+docker build -t mcp-server .
+```
+
+### Running the Docker Container
+
+```bash
+# Run with default settings (HTTPS on port 3001)
+docker run -p 3001:3001 mcp-server
+
+# Run with custom cache directory and max repos
+docker run -p 3001:3001 \
+  -e MAX_CACHED_REPOS=50 \
+  -v /path/to/cache:/cache \
+  mcp-server
+
+# Run with authentication tokens for private repos
+docker run -p 3001:3001 \
+  -e GITHUB_PERSONAL_ACCESS_TOKEN="your-github-token" \
+  -e AZURE_DEVOPS_PAT="your-azure-pat" \
+  mcp-server
+```
+
+### HTTPS and SSL Certificates
+
+The Docker container automatically generates self-signed SSL certificates for HTTPS support, which is required by Claude. The certificates are created at container startup and stored in `/app/certs/`.
+
+**Note**: Self-signed certificates will trigger browser security warnings. This is normal for development use.
+
+### Connecting Claude to Docker Container
+
+Since Claude's backend servers cannot directly access `localhost`, you'll need to expose your Docker container through a tunnel service:
+
+#### Using Cloudflare Tunnel (Recommended)
+
+1. Install cloudflared:
+```bash
+# macOS
+brew install cloudflared
+
+# Linux
+wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared-linux-amd64.deb
+```
+
+2. Start the tunnel:
+```bash
+cloudflared tunnel --url https://localhost:3001
+```
+
+3. You'll receive a public URL like `https://example.trycloudflare.com`. Use this URL when adding the MCP server to Claude.
+
+#### Using ngrok (Alternative)
+
+1. Install ngrok and authenticate:
+```bash
+# Install ngrok (see ngrok.com for instructions)
+ngrok config add-authtoken YOUR_AUTH_TOKEN
+```
+
+2. Start the tunnel:
+```bash
+ngrok http https://localhost:3001
+```
+
+3. Use the provided HTTPS URL when configuring Claude.
+
+### Docker Environment Variables
+
+The Docker container supports the following environment variables:
+
+- `MAX_CACHED_REPOS`: Maximum number of repositories to cache (default: 50)
+- `GITHUB_PERSONAL_ACCESS_TOKEN`: GitHub PAT for private repositories
+- `AZURE_DEVOPS_PAT`: Azure DevOps PAT for private repositories
+- `MCP_USE_HTTPS`: Enable HTTPS (default: true, required for Claude)
+
+### Docker Compose Example
+
+For production deployments, you can use Docker Compose:
+
+```yaml
+version: '3.8'
+services:
+  mcp-server:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - MAX_CACHED_REPOS=100
+      - GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_TOKEN}
+      - AZURE_DEVOPS_PAT=${AZURE_PAT}
+    volumes:
+      - ./cache:/cache
+    restart: unless-stopped
+```
+
 ## Supported Repository Formats
 
 The server supports the following repository URL formats:

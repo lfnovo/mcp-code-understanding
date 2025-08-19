@@ -22,8 +22,8 @@ classifiers = [
 ]
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    "mcp==1.6.0",
-    "mcp[cli]==1.6.0",
+    "mcp>=1.6.0",
+    "mcp[cli]>=1.6.0",
     "gitpython==3.1.44",
     "langchain==0.3.25",
     "aiohttp==3.11.18",
@@ -39,7 +39,10 @@ dependencies = [
     "lizard==1.17.31",
     "debugpy==1.8.14",  # For VS Code debugging support
     "platformdirs==4.3.8",
-    "filelock==3.18.0"
+    "filelock==3.18.0",
+    "uvicorn==0.34.0",  # For HTTP transport support
+    "starlette==0.45.2",  # For OAuth endpoints
+    "python-multipart==0.0.17"  # For form data handling
 ]
 
 [project.optional-dependencies]
@@ -56,6 +59,7 @@ dev = [
 [project.scripts]
 # Align script name with the package name for simplicity with uvx
 code-understanding-mcp-server = "code_understanding.mcp.server.app:main"
+code-understanding-mcp-server-simple = "code_understanding.mcp.server.simple_http_app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -7,8 +7,8 @@ services:
       - "3001:3001"
     environment:
       - PYTHONPATH=/app
+      - MAX_CACHED_REPOS=50
     volumes:
-      - /Users/luisnovo/dev/projetos:/projetos:ro
       - ./.cache:/cache
     privileged: true
     restart: unless-stopped
